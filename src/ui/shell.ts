@@ -41,6 +41,7 @@ export const PAGES: PageDef[] = [
   page('/consistency', 'page.consistency', '資料一致性', 'Data consistency', 'consistency', () => import('../pages/consistency')),
   page('/vendors', 'page.vendors', '廠商管理', 'Vendors', 'vendors', () => import('../pages/vendors')),
   page('/team', 'page.team', '團隊與規範', 'Team & standards', 'team', () => import('../pages/team')),
+  page('/roadmap', 'page.roadmap', '技術路徑圖', 'Roadmap', 'roadmap', () => import('../pages/roadmap')),
   page('/incidents', 'page.incidents', '事件與變更', 'Incidents & changes', 'incidents', () => import('../pages/incidents')),
   page('/rbac', 'page.rbac', '權限矩陣', 'Permissions', 'rbac', () => import('../pages/rbac')),
   page('/about', 'page.about', '關於這個 Demo', 'About this demo', 'about', () => import('../pages/about')),
