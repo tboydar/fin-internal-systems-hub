@@ -39,6 +39,7 @@ export const PAGES: PageDef[] = [
   page('/overview', 'page.overview', '總覽', 'Overview', 'overview', async () => ({ mount: mountOverview })),
   page('/integration', 'page.integration', '整合架構', 'Integration', 'integration', () => import('../pages/integration')),
   page('/consistency', 'page.consistency', '資料一致性', 'Data consistency', 'consistency', () => import('../pages/consistency')),
+  page('/vendors', 'page.vendors', '廠商管理', 'Vendors', 'vendors', () => import('../pages/vendors')),
   page('/incidents', 'page.incidents', '事件與變更', 'Incidents & changes', 'incidents', () => import('../pages/incidents')),
   page('/rbac', 'page.rbac', '權限矩陣', 'Permissions', 'rbac', () => import('../pages/rbac')),
   page('/about', 'page.about', '關於這個 Demo', 'About this demo', 'about', () => import('../pages/about')),
