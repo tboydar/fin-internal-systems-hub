@@ -3,7 +3,7 @@ import { menu, open, ROLES, signInAs } from './helpers';
 
 // 冒煙測試：每個角色登入後，選單上的每一頁都開得起來；沒權限的頁面會看到說明。
 
-const ALL_PAGES = ['/overview', '/integration', '/consistency', '/vendors', '/incidents', '/rbac', '/about'];
+const ALL_PAGES = ['/overview', '/integration', '/consistency', '/vendors', '/team', '/roadmap', '/demands', '/incidents', '/rbac', '/about'];
 
 for (const role of ROLES) {
   test(`${role}：選單上的每一頁都開得起來，而且沒有錯誤`, async ({ page }) => {

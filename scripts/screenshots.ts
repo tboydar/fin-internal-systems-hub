@@ -29,6 +29,11 @@ const SHOTS: Shot[] = [
   { file: '13-overview-hr', hash: '/overview', role: 'hr' },
   { file: '14-vendors', hash: '/vendors?vendor=v-crm' },
   { file: '15-vendors-penalty', hash: '/vendors?vendor=v-crm&tab=penalty' },
+  { file: '17-team-skills', hash: '/team?tab=skills' },
+  { file: '18-team-docs', hash: '/team?tab=docs' },
+  { file: '19-roadmap-eng', hash: '/roadmap?view=eng' },
+  { file: '20-roadmap-finance', hash: '/roadmap', role: 'finance' },
+  { file: '21-demands', hash: '/demands?req=REQ-303' },
   { file: '03-rbac-admin', hash: '/rbac', role: 'admin' },
   { file: '04-about', hash: '/about' },
   { file: '05-overview-en', hash: '/overview', lang: 'en' },
@@ -48,7 +53,7 @@ for (const shot of SHOTS) {
   await page.waitForSelector(`#view[data-page="${shot.hash.split('?')[0]}"] h1`);
   await page.waitForLoadState('networkidle');
   // 流程圖是延遲載入的，等它畫出節點
-  if (shot.hash.startsWith('/integration')) await page.waitForSelector('.react-flow__node');
+  if (shot.hash.startsWith('/integration') || shot.hash.startsWith('/demands')) await page.waitForSelector('.react-flow__node');
   // 3D 場景也是延遲載入的，等畫布出現
   if (shot.hash.startsWith('/overview')) await page.waitForSelector('#twin-stage canvas, #twin-fallback', { timeout: 15000 });
   await page.waitForTimeout(400);
