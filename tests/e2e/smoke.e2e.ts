@@ -351,3 +351,61 @@ test.describe('關閉 WebGL', () => {
     await expect(page.locator('#twin-fallback')).toBeVisible();
   });
 });
+
+test('劇本 B：在頁面上按「退件」與「核定」，劇本跟著走，最後留下決策紀錄', async ({ page }) => {
+  await open(page, '/overview');
+  await page.selectOption('#scenario-select', 'B');
+  await page.click('#scenario-start');
+  await page.click('#scenario-next');
+  await page.click('#scenario-look');
+  await expect(page.locator('#deliverable-table')).toContainText('等驗收');
+  await page.click('[data-act="reject"][data-dl="DL-415"]');
+  await expect(page.locator('#scenario-step')).toHaveText('2/6');
+  await expect(page.locator('#deliverable-table')).toContainText('312 位客戶');
+  await page.click('#scenario-next');
+  await page.click('#scenario-look');
+  await expect(page.locator('#late-table')).toContainText('DL-415');
+  await page.click('#scenario-next');
+  await page.click('#scenario-look');
+  await expect(page.locator('#raci-table')).toContainText('有爭議');
+  await page.click('#scenario-next');
+  await page.click('#scenario-look');
+  await page.click('[data-act="decide-cr"][data-cr="CR-035"]');
+  await expect(page.locator('#scenario-bar')).toContainText('已經走完');
+  await page.click('#scenario-look');
+  await expect(page.locator('#decision-table')).toContainText('DEC-110');
+  await expect(page.locator('#decision-table')).toContainText('兩邊都有責任');
+});
+
+test('劇本 C：並行對帳、切換日與回滾條件，最後寫進路徑圖', async ({ page }) => {
+  await open(page, '/overview');
+  await page.selectOption('#scenario-select', 'C');
+  await page.click('#scenario-start');
+  await page.click('#scenario-next');
+  await page.click('#scenario-next');
+  await page.click('#scenario-look');
+  await expect(page.locator('#rule-detail')).toContainText('新簽呈（試行）');
+  await expect(page.locator('#diff-table tbody tr')).toHaveCount(3);
+  await page.click('#scenario-next');
+  await page.click('#scenario-look');
+  await expect(page.locator('#change-detail .gates li')).toHaveCount(5);
+  await expect(page.locator('[data-act="approve"]')).toHaveAttribute('aria-disabled', 'true');
+  await page.click('#scenario-next');
+  await page.click('#scenario-next');
+  await expect(page.locator('#scenario-bar')).toContainText('已經走完');
+  await page.click('#scenario-look');
+  await expect(page.locator('#item-detail')).toContainText('2027-03-13');
+  await expect(page.locator('#item-detail')).toContainText('RC-11');
+});
+
+test('關於頁的對照表：八項職缺要求，每一項都連得到那一頁', async ({ page }) => {
+  await open(page, '/about');
+  await expect(page.locator('#map-table tbody tr')).toHaveCount(8);
+  const hrefs = await page.locator('#map-table a').evaluateAll((links) => links.map((a) => a.getAttribute('href') ?? ''));
+  expect(hrefs.length).toBeGreaterThanOrEqual(16);
+  for (const target of [...new Set(hrefs)]) {
+    await page.goto(target);
+    await expect(page.locator('#view .notice')).toHaveCount(0);
+    await expect(page.locator('#view h1')).toBeVisible();
+  }
+});
