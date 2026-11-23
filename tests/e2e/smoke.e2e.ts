@@ -288,3 +288,66 @@ test('核定變更請求要寫原因，核定後留下決策紀錄與稽核軌�
   await page.goto('#/rbac');
   await expect(page.locator('#audit')).toContainText('核定變更請求');
 });
+
+test('3D 與架構圖互跳；在 3D 注入故障，架構圖與總覽的數字一起變', async ({ page }) => {
+  await open(page, '/integration?sys=crm');
+  await page.click('[data-fk="to-twin"]');
+  await expect(page.locator('#view[data-page="/overview"]')).toBeVisible();
+  await expect(page.locator('#twin-card')).toContainText('CRM');
+  await expect(page.locator('#twin-stage canvas')).toBeVisible();
+  await page.click('[data-act="twin-fault"]');
+  await expect(page.locator('#twin-impact')).toContainText('1F 業務');
+  await expect(page.locator('#page-sum')).toContainText('7 條中斷');
+  await page.click('[data-fk="twin-to-map"]');
+  await expect(page.locator('#view[data-page="/integration"]')).toBeVisible();
+  await expect(page.locator('#page-sum')).toContainText('7 條中斷');
+  await expect(page.locator('#int-side')).toContainText('停止（模擬）');
+});
+
+test('時間軸重播月結日：拉到 23 點，清單換成夜間批次', async ({ page }) => {
+  await open(page, '/overview');
+  await expect(page.locator('#twin-flows')).toContainText('INT-014');
+  await page.locator('#twin-hour').fill('23');
+  await expect(page.locator('#twin-hour-out')).toHaveText('23:00');
+  await expect(page.locator('#twin-flows')).toContainText('INT-061');
+  await expect(page.locator('#twin-flows')).not.toContainText('INT-021');
+  await page.click('#twin-now');
+  await expect(page.locator('#twin-flows')).toContainText('INT-021');
+});
+
+test.describe('關閉 WebGL', () => {
+  test.beforeEach(async ({ page }) => {
+    // 讓瀏覽器拿不到任何 WebGL context，跟使用者關掉硬體加速或被群組原則封鎖時一樣
+    await page.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+        if (type.startsWith('webgl') || type === 'experimental-webgl') return null;
+        return (original as (...args: unknown[]) => unknown).call(this, type, ...rest);
+      } as typeof original;
+    });
+  });
+
+  test('3D 換成同一份資料的清單，其他功能照常', async ({ page }) => {
+    await open(page, '/overview');
+    await expect(page.locator('#twin-fallback')).toContainText('沒有開啟 WebGL');
+    await expect(page.locator('#twin-fallback tbody tr')).toHaveCount(14);
+    await page.click('#twin-fallback [data-system="hr"]');
+    await expect(page.locator('#twin-card')).toContainText('人事薪資');
+    await page.click('[data-act="twin-fault"]');
+    await expect(page.locator('#twin-fallback')).toContainText('受影響');
+    for (const path of ALL_PAGES) {
+      await open(page, path);
+      await expect(page.locator('#view .notice')).toHaveCount(0);
+    }
+    await open(page, '/integration');
+    await expect(page.locator('.react-flow__node')).toHaveCount(9);
+  });
+
+  test('劇本 A 照樣走得完', async ({ page }) => {
+    await open(page, '/overview');
+    await page.click('#scenario-start');
+    for (let i = 0; i < 8; i++) await page.click('#scenario-next');
+    await expect(page.locator('#scenario-bar')).toContainText('已經走完');
+    await expect(page.locator('#twin-fallback')).toBeVisible();
+  });
+});

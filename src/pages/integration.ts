@@ -319,6 +319,7 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
         <div class="actions">
           <a class="btn btn-sm" href="${withQuery({ impact: impactOn ? null : sys.id })}" data-fk="impact">${impactOn ? T('取消標示', 'Clear highlight') : T('在圖上標出影響範圍', 'Highlight the impact on the map')}</a>
           ${actionBtn({ act: 'fault', label: faulty ? T('解除故障', 'Clear the fault') : T('注入故障（模擬）', 'Inject a fault (simulation)'), perm: 'fault.inject', small: true, data: { sys: sys.id } })}
+          <a class="btn btn-sm" href="${href('/overview', { focus: sys.id, at: 'twin' })}" data-fk="to-twin">${T('在 3D 查看', 'View in 3D')}</a>
         </div>
         <p class="hint">${T('注入故障只改這個瀏覽器裡的 Demo 資料：這個系統經手的介面會顯示成中斷，所有頁面一起變。', 'Injecting a fault only changes the demo data in this browser: the interfaces this system handles show as down, on every page.')}</p>
         <h3>${T('經手的介面', 'Interfaces it handles')}</h3>

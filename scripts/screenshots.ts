@@ -19,6 +19,7 @@ interface Shot {
 const SHOTS: Shot[] = [
   { file: '01-overview-techlead', hash: '/overview' },
   { file: '02-overview-finance', hash: '/overview', role: 'finance' },
+  { file: '16-twin-impact', hash: '/overview?focus=hr&what=if' },
   { file: '07-integration', hash: '/integration' },
   { file: '08-integration-iface', hash: '/integration?iface=INT-014' },
   { file: '09-integration-impact', hash: '/integration?sys=hr&impact=hr' },
@@ -48,6 +49,8 @@ for (const shot of SHOTS) {
   await page.waitForLoadState('networkidle');
   // 流程圖是延遲載入的，等它畫出節點
   if (shot.hash.startsWith('/integration')) await page.waitForSelector('.react-flow__node');
+  // 3D 場景也是延遲載入的，等畫布出現
+  if (shot.hash.startsWith('/overview')) await page.waitForSelector('#twin-stage canvas, #twin-fallback', { timeout: 15000 });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/${shot.file}.png`, fullPage: true });
   console.log(`${OUT}/${shot.file}.png`);

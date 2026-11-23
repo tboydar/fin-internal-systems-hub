@@ -10,8 +10,9 @@ import { closeCountdown, ifaceStatus, ifacesByHealth, runsOf } from '../core/sel
 import { vendorMetrics } from '../core/sla';
 import { store } from '../core/store';
 import type { AppState, Branch, Demand, DlqItem, Domain, Health, Iface, Review, Task } from '../core/types';
-import { html, pct, type Safe, setHtml } from '../ui/dom';
+import { $, html, pct, type Safe, setHtml } from '../ui/dom';
 import { canOpen, type PageHandle } from '../ui/shell';
+import { mountTwinPanel } from '../ui/twinPanel';
 import { mark, pageHead, panel, personName, runStrip, systemName, table, tag } from '../ui/widgets';
 
 // 總覽。同一份資料，每個角色看到不同的內容與不同的說法：
@@ -642,24 +643,31 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
     }
 
     setHtml(
-      root,
-      html`<div class="page">
-        ${pageHead(T('總覽', 'Overview'), html`${summary} <span class="muted">${T('資料時間 {t}', 'As of {t}', { t: `${fmtDay(TODAY)} ${fmtStamp(state.clock).split(' ')[1]}` })}</span>`)}
-        ${statRow(stats)}
-        <div id="twin-slot"></div>
-        ${sections}
-        ${calendar(state, tech)}
-      </div>`,
+      $('#ov-top', root),
+      html`${pageHead(T('總覽', 'Overview'), html`${summary} <span class="muted">${T('資料時間 {t}', 'As of {t}', { t: `${fmtDay(TODAY)} ${fmtStamp(state.clock).split(' ')[1]}` })}</span>`)}
+        ${statRow(stats)}`,
+    );
+    setHtml(
+      $('#ov-rest', root),
+      html`${sections}
+        ${calendar(state, tech)}`,
     );
   }
 
+  // 上、下兩塊跟著資料重畫；中間的 3D 區塊只建立一次，自己訂閱資料
+  setHtml(root, html`<div class="page"><div class="stack-lg" id="ov-top"></div><div id="twin-slot"></div><div class="stack-lg" id="ov-rest"></div></div>`);
+  const twin = mountTwinPanel($('#twin-slot', root), route);
   const off = store.subscribe(() => render());
   render();
   reveal();
   return {
-    destroy: off,
+    destroy() {
+      off();
+      twin.destroy();
+    },
     route(next) {
       route = next;
+      twin.route(next);
       render();
       reveal();
     },
