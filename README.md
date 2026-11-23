@@ -84,7 +84,8 @@ bun run check:names                  # 查假名稱有沒有跟真實公司或�
 ## 版號
 
 每次建置帶一個版號 `v<台灣日期>.<當天第幾次 CI>`，例如 `v20261124.2`。
-顯示在「關於這個 Demo」頁，也寫在 `index.html` 的 `<meta name="app-version">`：
+每個 commit 各自 push、各跑一次 CI，所以每個 commit 版號加一；失敗或被取消的那幾次也佔一個號碼，隔天從 1 開始。
+顯示在每一頁的側欄底部與「關於這個 Demo」頁，也寫在 `index.html` 的 `<meta name="app-version">`：
 
 ```bash
 curl -s https://tboydar.github.io/fin-internal-systems-hub/ | grep app-version

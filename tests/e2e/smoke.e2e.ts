@@ -107,9 +107,13 @@ test('瀏覽器只向網站本身拿靜態檔案，資料只存在 localStorage'
   expect(stored.keys.filter((key) => !key.startsWith('fish:'))).toEqual([]);
 });
 
-test('版號寫在 meta 與關於頁', async ({ page }) => {
+test('版號寫在 meta、側欄與關於頁', async ({ page }) => {
   await open(page, '/about');
   const version = await page.locator('meta[name="app-version"]').getAttribute('content');
   expect(version).toMatch(/^v\d{8}\.(\d+|dev|r\d+)$/);
   await expect(page.locator('#about-version')).toContainText(version ?? '');
+  // 每一頁的側欄底部也看得到同一個版號
+  await expect(page.locator('#app-version')).toHaveText(version ?? '');
+  await open(page, '/overview');
+  await expect(page.locator('#app-version')).toHaveText(version ?? '');
 });

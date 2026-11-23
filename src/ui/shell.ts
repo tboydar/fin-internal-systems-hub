@@ -6,6 +6,7 @@ import { currentRoute, HOME, href, navigate, onRouteChange, type Route } from '.
 import { closeCountdown } from '../core/selectors';
 import { store } from '../core/store';
 import type { L10n, Lang, RoleId, VendorId } from '../core/types';
+import { APP_VERSION } from '../core/version';
 import { ORG } from '../mock/org';
 import { mount as mountOverview } from '../pages/overview';
 import { $, html, on, openModal, raw, setHtml, toast } from './dom';
@@ -109,7 +110,8 @@ export function mountShell(app: HTMLElement): void {
             html`<a href="${href(p.path)}" class="${p.path === active ? 'is-active' : ''}" ${p.path === active ? raw('aria-current="page"') : ''}>${icon(p.icon)}<span>${tx(p.name)}</span></a>`,
         )}
       </nav>
-      <p class="sidebar-foot">${T('機構、廠商、人名與數字全部虛構。', 'The institution, vendors, people and numbers are all fictional.')}</p>`,
+      <p class="sidebar-foot">${T('機構、廠商、人名與數字全部虛構。', 'The institution, vendors, people and numbers are all fictional.')}
+        <a class="ver num" id="app-version" href="${href('/about')}" title="${T('版號：台灣日期，加上當天第幾次 CI', 'Version: Taiwan date plus the CI run count for that day')}">${APP_VERSION}</a></p>`,
     );
   }
 
