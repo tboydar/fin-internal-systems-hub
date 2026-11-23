@@ -17,6 +17,7 @@ const f = (from: string, to: string, zh: string, en: string): FieldMap => ({ fro
 const RETRY_ESB = { max: 3, backoff: L('30 秒、2 分、10 分', '30 s, 2 min, 10 min') };
 const RETRY_FILE = { max: 2, backoff: L('15 分後重抓一次', 'Fetch again after 15 min') };
 const RETRY_JOB = { max: 1, backoff: L('30 分後重跑一次', 'Rerun once after 30 min') };
+const RETRY_SYNC = { max: 3, backoff: L('1 分、5 分、15 分', '1 min, 5 min, 15 min') };
 const RETRY_NONE = { max: 0, backoff: L('不重試，直接告警', 'No retry; alert immediately') };
 
 interface Spec {
@@ -541,7 +542,9 @@ const SPECS: Spec[] = [
 function retryFor(spec: Spec): Iface['retry'] {
   if (spec.via === 'esb') return RETRY_ESB;
   if (spec.via === 'file') return RETRY_FILE;
-  return spec.protocol === 'JDBC' ? RETRY_JOB : RETRY_NONE;
+  if (spec.protocol === 'JDBC') return RETRY_JOB;
+  // 直連的帳號同步會被對方限流，所以也要重試；單一登入失敗就請使用者重新登入
+  return spec.schedule.kind === 'interval' ? RETRY_SYNC : RETRY_NONE;
 }
 
 export function buildIfaces(): Iface[] {

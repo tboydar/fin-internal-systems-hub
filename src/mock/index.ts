@@ -14,7 +14,7 @@ import { buildChangeRequests, buildDeliverables, buildMilestones, buildRaci, bui
 import { buildReviews, buildTasks } from './work';
 
 /** 資料結構有不相容的變更時把這個數字加一，舊的 localStorage 就會自動重建。 */
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 /** 稽核軌跡一開始就有的幾筆：最近兩週真的會留下紀錄的動作。 */
 function buildAudit(): AuditEntry[] {

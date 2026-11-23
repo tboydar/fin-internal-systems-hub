@@ -102,8 +102,8 @@ function forEngineer(state: AppState, iface: Iface, st: IfaceStatus): L10n {
       zh.push(`${dlq} 筆進 DLQ`);
       en.push(`${dlq} ${plural(dlq, 'record', 'records')} in the DLQ`);
     } else {
-      zh.push(`整批 ${run.failed} 筆失敗；${run.note?.zh ?? ''}`);
-      en.push(`all ${run.failed} records failed; ${run.note?.en ?? ''}`);
+      zh.push(`整批 ${run.failed} 筆失敗${run.note ? `：${run.note.zh}` : ''}`);
+      en.push(`all ${run.failed} records failed${run.note ? `: ${run.note.en}` : ''}`);
     }
   } else if (run.status === 'held') {
     const up = brokenUpstream(state, iface);
@@ -128,7 +128,7 @@ function payrollPosting(state: AppState, iface: Iface, st: IfaceStatus): L10n | 
   const close = md(CLOSE_DAY);
   const done = caughtUp(state, iface);
   if (done) {
-    const late = fmtHoursPair(hoursBetween(done.scheduled, done.done));
+    const late = fmtHoursText(hoursBetween(done.scheduled, done.done));
     return L(
       `${month()} 月薪資分錄已在 ${timeOf(done.done)} 入帳，比原定晚 ${late.zh}；不影響 ${close} 關帳`,
       `Payroll journals for month ${month()} were posted at ${timeOf(done.done)}, ${late.en} later than scheduled; the ${close} book closing is not affected`,
@@ -145,7 +145,8 @@ function payrollPosting(state: AppState, iface: Iface, st: IfaceStatus): L10n | 
   );
 }
 
-function fmtHoursPair(hours: number): L10n {
+/** 把小時數寫成「2 小時 40 分」。 */
+export function fmtHoursText(hours: number): L10n {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return L(`${h ? `${h} 小時` : ''}${m ? ` ${m} 分` : ''}`.trim(), `${h ? `${h} h` : ''}${m ? ` ${m} min` : ''}`.trim());
@@ -251,7 +252,7 @@ function ticketLine(state: AppState, ticket: Ticket): Statement {
 
 function fmtHoursFixed(hours: number): L10n {
   if (hours >= 48) return L(`${Math.round(hours / 24)} 天`, `${Math.round(hours / 24)} d`);
-  return fmtHoursPair(hours).zh ? fmtHoursPair(hours) : L('不到 1 分鐘', 'under a minute');
+  return fmtHoursText(hours).zh ? fmtHoursText(hours) : L('不到 1 分鐘', 'under a minute');
 }
 
 const ORDER: Record<Health, number> = { crit: 0, warn: 1, ok: 2 };

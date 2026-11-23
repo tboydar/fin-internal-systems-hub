@@ -32,18 +32,15 @@ interface PageDef {
   load: () => Promise<{ mount: PageMount }>;
 }
 
+const page = (path: string, perm: Perm, zh: string, en: string, icon: string, load: PageDef['load']): PageDef => ({ path, perm, name: { zh, en }, icon, load });
+
+// 總覽是預設頁，直接打包進主程式；其餘頁面各自切成獨立 chunk，點到才下載。
 export const PAGES: PageDef[] = [
-  // 總覽是預設頁，直接打包進主程式；其餘頁面各自切成獨立 chunk，點到才下載。
-  { path: '/overview', perm: 'page.overview', name: { zh: '總覽', en: 'Overview' }, icon: 'overview', load: async () => ({ mount: mountOverview }) },
-  {
-    path: '/integration',
-    perm: 'page.integration',
-    name: { zh: '整合架構', en: 'Integration' },
-    icon: 'integration',
-    load: () => import('../pages/integration'),
-  },
-  { path: '/rbac', perm: 'page.rbac', name: { zh: '權限矩陣', en: 'Permissions' }, icon: 'rbac', load: () => import('../pages/rbac') },
-  { path: '/about', perm: 'page.about', name: { zh: '關於這個 Demo', en: 'About this demo' }, icon: 'about', load: () => import('../pages/about') },
+  page('/overview', 'page.overview', '總覽', 'Overview', 'overview', async () => ({ mount: mountOverview })),
+  page('/integration', 'page.integration', '整合架構', 'Integration', 'integration', () => import('../pages/integration')),
+  page('/consistency', 'page.consistency', '資料一致性', 'Data consistency', 'consistency', () => import('../pages/consistency')),
+  page('/rbac', 'page.rbac', '權限矩陣', 'Permissions', 'rbac', () => import('../pages/rbac')),
+  page('/about', 'page.about', '關於這個 Demo', 'About this demo', 'about', () => import('../pages/about')),
 ];
 
 /** 每個角色登入後先看到哪一頁。那一頁還沒有或沒權限時，退回總覽。 */

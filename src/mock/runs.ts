@@ -18,7 +18,7 @@ const LATEST: Record<string, { status: RunStatus; attempts?: number; http?: numb
     status: 'fail',
     attempts: 2,
     failed: 2600,
-    note: L('來源檢視表少了 STEP_OUT_TIME 欄位，整批失敗', 'Source view is missing STEP_OUT_TIME; the whole batch failed'),
+    note: L('來源檢視表少了 STEP_OUT_TIME 欄位', 'the source view is missing STEP_OUT_TIME'),
   },
 };
 

@@ -1,4 +1,4 @@
-import { addDays, ago, TODAY } from '../core/date';
+import { addWorkdays, ago, TODAY } from '../core/date';
 import { L } from '../core/i18n';
 import type { Review, SystemId, Task, TaskStatus } from '../core/types';
 
@@ -51,7 +51,8 @@ export function buildTasks(): Task[] {
     ifaceId,
     effortDays,
     status,
-    due: addDays(TODAY, dueInDays),
+    // 期限用工作日算，不會落在週末或國定假日
+    due: addWorkdays(TODAY, dueInDays),
   }));
 }
 
