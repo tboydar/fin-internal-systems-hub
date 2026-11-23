@@ -1,0 +1,31 @@
+{
+  "name": "fin-internal-systems-hub",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "稜川金融 內部系統整合治理中心：純前端作品集 Demo。所有資料皆為虛構。",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test tests/unit",
+    "test:e2e": "playwright test",
+    "check": "bun run typecheck && bun run lint && bun run test",
+    "check:bundle": "bun scripts/check-bundle.ts",
+    "check:names": "bun scripts/check-names.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@playwright/test": "^1.65.1",
+    "@types/bun": "^1.4.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "dependencies": {
+    "@fontsource/encode-sans-semi-condensed": "^5.3.0"
+  }
+}
