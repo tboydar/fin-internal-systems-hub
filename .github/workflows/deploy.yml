@@ -1,0 +1,74 @@
+name: Test and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 預設只給讀取；部署要用的權限只開在 deploy 那個 job
+permissions:
+  contents: read
+  actions: read # 版號要查這個流程今天跑了幾次
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Type-check
+        run: bun run typecheck
+      - name: Lint
+        run: bun run lint
+      - name: Unit tests
+        run: bun run test
+      # 版號 v<台灣日期>.<當天第幾次 CI> 在建置時算出來（scripts/app-version.ts）
+      - name: Build
+        run: bun run build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Bundle size check
+        run: bun run check:bundle
+      - name: Show version
+        run: |
+          VERSION=$(grep -o 'name="app-version" content="[^"]*"' dist/index.html | sed -E 's/.*content="([^"]*)"/\1/')
+          echo "Version: $VERSION"
+          echo "### $VERSION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install the browser for the smoke test
+        run: bunx playwright install --with-deps chromium
+      - name: Browser smoke test
+        run: bun run test:e2e
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: test-results
+          retention-days: 7
+      - uses: actions/upload-pages-artifact@v5
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
