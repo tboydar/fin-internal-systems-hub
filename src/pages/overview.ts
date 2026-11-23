@@ -29,7 +29,7 @@ export function mount(root: HTMLElement): PageHandle {
     const by = ifacesByHealth(s);
     const counts = { ok: by.ok.filter(inScope).length, warn: by.warn.filter(inScope).length, crit: by.crit.filter(inScope).length };
     const total = counts.ok + counts.warn + counts.crit;
-    const c = closeCountdown();
+    const c = closeCountdown(s);
     const attention = [...by.crit, ...by.warn].filter(inScope);
 
     const summary = tech

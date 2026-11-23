@@ -167,6 +167,8 @@ export interface Run {
   attempts: number;
   seconds: number;
   http?: number;
+  /** 比排定時間晚了幾分鐘（status 是 late 時才有）。 */
+  lateMin?: number;
   note?: L10n;
 }
 
@@ -470,6 +472,8 @@ export interface ScenarioState {
 export interface AppState {
   version: number;
   seed: number;
+  /** Demo 的「現在」。平常固定不動；劇本每走一步會往後推。所有倒數與 SLA 計時都看這個時刻。 */
+  clock: string;
   systems: System[];
   vendors: Vendor[];
   people: Person[];

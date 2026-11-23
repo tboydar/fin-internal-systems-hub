@@ -125,7 +125,7 @@ describe('SLA', () => {
   test('達成率是從工單算出來的：重算一次，數字相同', () => {
     for (const v of state.vendors) {
       const m = vendorMetrics(state, v.id);
-      const again = m.tickets.map((t) => ticketSla(t, v).state);
+      const again = m.tickets.map((t) => ticketSla(t, v, state.clock).state);
       const met = again.filter((s) => s === 'met').length;
       const bad = again.filter((s) => s === 'breached' || s === 'overdue').length;
       expect(m.met.length).toBe(met);

@@ -1,4 +1,4 @@
-import { at } from '../core/date';
+import { at, DEMO_NOW } from '../core/date';
 import { L } from '../core/i18n';
 import { DEFAULT_MATRIX } from '../core/rbac';
 import type { AppState, AuditEntry, L10n, RoleId } from '../core/types';
@@ -14,7 +14,7 @@ import { buildChangeRequests, buildDeliverables, buildMilestones, buildRaci, bui
 import { buildReviews, buildTasks } from './work';
 
 /** 資料結構有不相容的變更時把這個數字加一，舊的 localStorage 就會自動重建。 */
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 /** 稽核軌跡一開始就有的幾筆：最近兩週真的會留下紀錄的動作。 */
 function buildAudit(): AuditEntry[] {
@@ -121,6 +121,7 @@ export function buildInitialState(seed: number = DEFAULT_SEED): AppState {
   return {
     version: STATE_VERSION,
     seed,
+    clock: DEMO_NOW,
     systems: buildSystems(),
     vendors,
     people: buildPeople(),

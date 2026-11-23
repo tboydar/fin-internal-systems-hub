@@ -1,19 +1,20 @@
 import { can, persona } from '../core/auth';
-import { fmtDate, timeOf } from '../core/date';
+import { dayOf, fmtDate, timeOf } from '../core/date';
 import { getLang, T, tx } from '../core/i18n';
 import { type Perm, ROLE_NAME, ROLES } from '../core/rbac';
 import { currentRoute, HOME, href, navigate, onRouteChange, type Route } from '../core/router';
+import { endScenario, nextStep, SCENARIOS, scenarioStatus, startScenario } from '../core/scenario';
 import { closeCountdown } from '../core/selectors';
 import { store } from '../core/store';
-import type { L10n, Lang, RoleId, VendorId } from '../core/types';
+import type { L10n, Lang, RoleId, ScenarioId, VendorId } from '../core/types';
 import { APP_VERSION } from '../core/version';
 import { ORG } from '../mock/org';
 import { mount as mountOverview } from '../pages/overview';
-import { $, html, on, openModal, raw, setHtml, toast } from './dom';
+import { $, html, on, openModal, raw, type Safe, setHtml, toast } from './dom';
 import { icon } from './icons';
 
 // 外殼分成兩層，刻意畫得不一樣：
-//   最上面一條是「Demo 控制」：切換登入身分、語言、還原資料。這是看 Demo 的人在用的，不屬於那套內部工具。
+//   最上面一條是「Demo 控制」：切換登入身分、語言、劇本、還原資料。這是看 Demo 的人在用的，不屬於那套內部工具。
 //   下面才是工具本身：側欄選單與頁面。選單只列出目前角色有權限的頁面。
 
 export interface PageHandle {
@@ -34,6 +35,12 @@ interface PageDef {
 export const PAGES: PageDef[] = [
   // 總覽是預設頁，直接打包進主程式；其餘頁面各自切成獨立 chunk，點到才下載。
   { path: '/overview', perm: 'page.overview', name: { zh: '總覽', en: 'Overview' }, icon: 'overview', load: async () => ({ mount: mountOverview }) },
+  {
+    perm: 'page.integration',
+    name: { zh: '整合架構', en: 'Integration' },
+    icon: 'integration',
+    load: () => import('../pages/integration'),
+  },
   { path: '/rbac', perm: 'page.rbac', name: { zh: '權限矩陣', en: 'Permissions' }, icon: 'rbac', load: () => import('../pages/rbac') },
   { path: '/about', perm: 'page.about', name: { zh: '關於這個 Demo', en: 'About this demo' }, icon: 'about', load: () => import('../pages/about') },
 ];
@@ -55,6 +62,12 @@ export function landingOf(role: RoleId): string {
   return def && store.state.rbac[role]?.includes(def.perm) ? def.path : HOME;
 }
 
+/** 目前的角色能不能開某一頁（那一頁存在，而且有權限）。 */
+export function canOpen(path: string): boolean {
+  const def = PAGES.find((p) => p.path === path);
+  return !!def && can(def.perm);
+}
+
 export function mountShell(app: HTMLElement): void {
   setHtml(
     app,
@@ -67,33 +80,62 @@ export function mountShell(app: HTMLElement): void {
   const view = $('#view', app);
   const skip = $('#skip', app);
 
+  function scenarioControls(): Safe {
+    const status = scenarioStatus(store.state);
+    if (!status) {
+      const ids = Object.keys(SCENARIOS) as ScenarioId[];
+      return html`<span class="demo-row" id="scenario-bar">
+        <label for="scenario-select">${T('劇本', 'Scenario')}</label>
+        <select id="scenario-select">${ids.map((id) => html`<option value="${id}">${id}. ${tx(SCENARIOS[id]?.name)}</option>`)}</select>
+        <button type="button" class="btn btn-sm" id="scenario-start">${icon('play', 13)}${T('開始（資料會先還原）', 'Start (data is restored first)')}</button>
+      </span>`;
+    }
+    const { def, step, total, last, next, done } = status;
+    const look = last && canOpen(last.look.path) ? last.look : null;
+    return html`<span class="demo-row is-running" id="scenario-bar" role="status">
+      <b>${T('劇本 {id}', 'Scenario {id}', { id: def.id })}</b>
+      <span class="num" id="scenario-step">${step}/${total}</span>
+      <span id="scenario-last">${last ? tx(last.title) : tx(def.brief)}</span>
+      ${look ? html`<a class="btn btn-sm" href="${href(look.path, look.query)}" id="scenario-look">${T('去看：', 'See: ')}${tx(look.label)}</a>` : ''}
+      ${
+        done
+          ? html`<span>${T('已經走完。', 'Finished.')}</span>`
+          : html`<button type="button" class="btn btn-sm btn-primary" id="scenario-next">${icon('next', 13)}${T('下一步：', 'Next: ')}${tx(next?.title)}</button>`
+      }
+      <button type="button" class="btn btn-sm" id="scenario-end">${icon('stop', 13)}${T('結束劇本', 'End scenario')}</button>
+    </span>`;
+  }
+
   function renderBar(): void {
     const { role, lang, vendorId } = store.prefs;
-    const c = closeCountdown();
+    const c = closeCountdown(store.state);
     skip.textContent = T('跳到主要內容', 'Skip to main content');
     setHtml(
       bar,
-      html`<span class="demo-tag">${T('Demo 控制', 'Demo controls')}</span>
-      <span class="demo-date" id="demo-date">${T('Demo 日期', 'Demo date')} <b class="num">${fmtDate(c.today)} ${timeOf(c.now)}</b>${T(
-        '，月結前 {n} 個工作日。這是固定的示範日期。',
-        ', {n} working {n|day|days} before month-end. This date is fixed for the demo.',
-        { n: c.toMonthEnd },
-      )}</span>
-      <span class="demo-tools">
-        <label for="role-select">${T('登入身分', 'Signed in as')}</label>
-        <select id="role-select">${ROLES.map((r) => html`<option value="${r}" ${r === role ? raw('selected') : ''}>${tx(ROLE_NAME[r])}</option>`)}</select>
-        ${
-          role === 'vendorpm'
-            ? html`<label for="vendor-select" class="sr-only">${T('代表哪一家廠商', 'Which vendor')}</label>
-              <select id="vendor-select">${store.state.vendors.map((v) => html`<option value="${v.id}" ${v.id === vendorId ? raw('selected') : ''}>${tx(v.name)}</option>`)}</select>`
-            : ''
-        }
-        <span class="seg" role="group" aria-label="${T('語言', 'Language')}">
-          <button type="button" data-lang="zh" lang="zh-Hant" aria-pressed="${String(lang === 'zh')}">中文</button>
-          <button type="button" data-lang="en" lang="en" aria-pressed="${String(lang === 'en')}">EN</button>
+      html`<span class="demo-row">
+        <span class="demo-tag">${T('Demo 控制', 'Demo controls')}</span>
+        <span class="demo-date" id="demo-date">${T('Demo 日期', 'Demo date')} <b class="num">${fmtDate(dayOf(c.now))} ${timeOf(c.now)}</b>${T(
+          '，月結前 {n} 個工作日。這是固定的示範日期。',
+          ', {n} working {n|day|days} before month-end. This date is fixed for the demo.',
+          { n: c.toMonthEnd },
+        )}</span>
+        <span class="demo-tools">
+          <label for="role-select">${T('登入身分', 'Signed in as')}</label>
+          <select id="role-select">${ROLES.map((r) => html`<option value="${r}" ${r === role ? raw('selected') : ''}>${tx(ROLE_NAME[r])}</option>`)}</select>
+          ${
+            role === 'vendorpm'
+              ? html`<label for="vendor-select" class="sr-only">${T('代表哪一家廠商', 'Which vendor')}</label>
+                <select id="vendor-select">${store.state.vendors.map((v) => html`<option value="${v.id}" ${v.id === vendorId ? raw('selected') : ''}>${tx(v.name)}</option>`)}</select>`
+              : ''
+          }
+          <span class="seg" role="group" aria-label="${T('語言', 'Language')}">
+            <button type="button" data-lang="zh" lang="zh-Hant" aria-pressed="${String(lang === 'zh')}">中文</button>
+            <button type="button" data-lang="en" lang="en" aria-pressed="${String(lang === 'en')}">EN</button>
+          </span>
+          <button type="button" class="btn btn-sm" id="reset-btn">${icon('reset', 14)}${T('還原 Demo 資料', 'Restore demo data')}</button>
         </span>
-        <button type="button" class="btn btn-sm" id="reset-btn">${icon('reset', 14)}${T('還原 Demo 資料', 'Restore demo data')}</button>
-      </span>`,
+      </span>
+      ${scenarioControls()}`,
     );
   }
 
@@ -153,10 +195,7 @@ export function mountShell(app: HTMLElement): void {
         T(
           '「{role}」沒有「{page}」的檢視權限。可以在上方換一個登入身分，或請系統管理員到權限矩陣開啟。',
           '“{role}” has no permission to view “{page}”. Switch identity above, or ask the system administrator to grant it in the permission matrix.',
-          {
-            role: tx(ROLE_NAME[store.prefs.role]),
-            page: tx(def.name),
-          },
+          { role: tx(ROLE_NAME[store.prefs.role]), page: tx(def.name) },
         ),
         route.path,
       );
@@ -179,12 +218,37 @@ export function mountShell(app: HTMLElement): void {
   });
   on(bar, 'change', '#vendor-select', (_e, el) => store.setPrefs({ vendorId: (el as HTMLSelectElement).value as VendorId }));
   on(bar, 'click', '[data-lang]', (_e, el) => store.setPrefs({ lang: el.dataset.lang as Lang }));
+  on(bar, 'click', '#scenario-start', () => {
+    const id = $<HTMLSelectElement>('#scenario-select', bar).value as ScenarioId;
+    startScenario(id);
+    toast(
+      T('劇本 {id} 已啟動，資料已還原成初始狀態。按「下一步」開始。', 'Scenario {id} started and data restored to its initial state. Press “Next” to begin.', {
+        id,
+      }),
+    );
+    $('#scenario-next', bar).focus();
+  });
+  on(bar, 'click', '#scenario-next', () => {
+    const step = nextStep();
+    if (step) toast(tx(step.title));
+    (bar.querySelector<HTMLElement>('#scenario-next') ?? bar.querySelector<HTMLElement>('#scenario-end'))?.focus();
+  });
+  on(bar, 'click', '#scenario-end', () => {
+    endScenario();
+    toast(
+      T(
+        '劇本已結束。發生過的變化會留著，要回到最初請按「還原 Demo 資料」。',
+        'Scenario ended. What happened stays; press “Restore demo data” to go back to the start.',
+      ),
+    );
+    $('#scenario-start', bar).focus();
+  });
   on(bar, 'click', '#reset-btn', () => {
     openModal(
       html`<div class="modal-head"><h2>${T('還原 Demo 資料', 'Restore demo data')}</h2></div>
       <div class="modal-body"><p>${T(
-        '你在這個瀏覽器做過的所有操作都會清掉，資料回到最初的樣子。登入身分與語言不變。',
-        'Everything you did in this browser is cleared and the data returns to its initial state. Identity and language stay as they are.',
+        '你在這個瀏覽器做過的所有操作都會清掉，資料回到最初的樣子，進行中的劇本也會結束。登入身分與語言不變。',
+        'Everything you did in this browser is cleared, the data returns to its initial state and any running scenario ends. Identity and language stay as they are.',
       )}</p></div>
       <div class="modal-foot"><button type="button" class="btn" data-close>${T('取消', 'Cancel')}</button><button type="button" class="btn btn-primary" id="do-reset">${T('還原', 'Restore')}</button></div>`,
       (dialog, close) => {
@@ -210,18 +274,28 @@ export function mountShell(app: HTMLElement): void {
     true,
   );
 
-  let seen = { role: store.prefs.role, lang: store.prefs.lang, vendor: store.prefs.vendorId, rbac: JSON.stringify(store.state.rbac) };
+  const snapshot = () => ({
+    role: store.prefs.role,
+    lang: store.prefs.lang,
+    vendor: store.prefs.vendorId,
+    rbac: JSON.stringify(store.state.rbac),
+    clock: store.state.clock,
+    scenario: JSON.stringify(store.state.scenario),
+  });
+  let seen = snapshot();
   store.subscribe((kind) => {
-    const next = { role: store.prefs.role, lang: store.prefs.lang, vendor: store.prefs.vendorId, rbac: JSON.stringify(store.state.rbac) };
+    const next = snapshot();
     const identityChanged = next.role !== seen.role || next.lang !== seen.lang || next.vendor !== seen.vendor;
     const rbacChanged = next.rbac !== seen.rbac;
+    const barChanged = next.clock !== seen.clock || next.scenario !== seen.scenario;
     seen = next;
     if (kind === 'reset' || identityChanged) {
       renderBar();
       lastPath = ''; // 身分或語言換了，整頁重掛
       void show();
-    } else if (rbacChanged) {
-      renderSide();
+    } else {
+      if (rbacChanged) renderSide();
+      if (barChanged) renderBar();
     }
   });
 

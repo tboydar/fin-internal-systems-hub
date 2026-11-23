@@ -1,5 +1,4 @@
 import { PERSONA } from '../mock/org';
-import { DEMO_NOW } from './date';
 import { L, tx } from './i18n';
 import { type Perm, ROLE_NAME } from './rbac';
 import { store } from './store';
@@ -52,7 +51,7 @@ export function audit(draft: AppState, action: L10n, target: string, detail: L10
   const who = persona();
   const n = (draft.counters.audit ?? 0) + 1;
   draft.counters.audit = n;
-  draft.audit.unshift({ id: `AU-${String(n).padStart(4, '0')}`, at: DEMO_NOW, actor: who.name, role: who.role, action, target, detail });
+  draft.audit.unshift({ id: `AU-${String(n).padStart(4, '0')}`, at: draft.clock, actor: who.name, role: who.role, action, target, detail });
 }
 
 /** 目前登入者的顯示名稱。 */

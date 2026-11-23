@@ -184,7 +184,7 @@ export function slaRisk(state: AppState, vendorId?: VendorId | null): SlaRisk {
   for (const vendor of state.vendors) {
     if (vendorId && vendor.id !== vendorId) continue;
     const m = vendorMetrics(state, vendor.id);
-    overdue.push(...m.open.filter((t) => ticketSla(t, vendor).state === 'overdue'));
+    overdue.push(...m.open.filter((t) => ticketSla(t, vendor, state.clock).state === 'overdue'));
     atRisk.push(...m.atRisk);
     lateDeliverables.push(...m.lateOpen);
   }

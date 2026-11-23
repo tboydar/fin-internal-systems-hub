@@ -10,9 +10,9 @@ const HISTORY = 12;
 const MONTHLY_HISTORY = 6;
 
 /** 最近一次執行的結果。沒列在這裡的介面，最近一次都是成功。 */
-const LATEST: Record<string, { status: RunStatus; attempts?: number; http?: number; failed?: number; note: L10n }> = {
+const LATEST: Record<string, { status: RunStatus; attempts?: number; http?: number; failed?: number; lateMin?: number; note: L10n }> = {
   'INT-014': { status: 'retried', attempts: 2, http: 504, note: L('第一次逾時，重試後成功', 'First attempt timed out; succeeded on retry') },
-  'INT-031': { status: 'late', note: L('檔案晚 47 分鐘到', 'File arrived 47 minutes late') },
+  'INT-031': { status: 'late', lateMin: 47, note: L('檔案晚 47 分鐘到', 'File arrived 47 minutes late') },
   'INT-052': { status: 'retried', attempts: 3, http: 429, note: L('CRM 端限流，第三次才成功', 'Rate-limited by CRM; succeeded on the third attempt') },
   'INT-055': {
     status: 'fail',
@@ -69,6 +69,7 @@ export function buildRuns(rng: Rng, ifaces: Iface[]): Run[] {
       let failed = 0;
       let http: number | undefined;
       let note: L10n | undefined;
+      let lateMin: number | undefined;
       const forced = i === 0 ? LATEST[iface.id] : undefined;
       if (forced) {
         status = forced.status;
@@ -76,6 +77,7 @@ export function buildRuns(rng: Rng, ifaces: Iface[]): Run[] {
         failed = forced.failed ?? 0;
         http = forced.http;
         note = forced.note;
+        lateMin = forced.lateMin;
       } else if (i > 0) {
         // 歷史紀錄：長期不穩的介面大約四次有一次要重試；其他介面偶爾一次
         const roll = rng.next();
@@ -88,6 +90,7 @@ export function buildRuns(rng: Rng, ifaces: Iface[]): Run[] {
           attempts = 2;
         } else if (iface.id === 'INT-031' && roll < 0.22) {
           status = 'late';
+          lateMin = rng.int(12, 55);
         }
       }
       const base = iface.schedule.kind === 'realtime' ? 2 : Math.max(3, Math.round(records / 40));
@@ -101,6 +104,7 @@ export function buildRuns(rng: Rng, ifaces: Iface[]): Run[] {
         attempts,
         seconds: Math.round(base * rng.float(0.8, 1.6) * attempts),
         http,
+        lateMin,
         note,
       });
     });

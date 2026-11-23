@@ -1,4 +1,4 @@
-import { DEMO_NOW, dayOf, hoursBetween, shift, TODAY } from './date';
+import { dayOf, hoursBetween, shift, TODAY } from './date';
 import type { AppState, Deliverable, Priority, Ticket, Vendor, VendorId } from './types';
 
 // 廠商的數字全部從資料列算出來：SLA 達成率來自工單，交付準時率與驗收退件率來自交付項。
@@ -21,7 +21,7 @@ export interface TicketSla {
   used: number;
 }
 
-export function ticketSla(ticket: Ticket, vendor: Vendor, now: string = DEMO_NOW): TicketSla {
+export function ticketSla(ticket: Ticket, vendor: Vendor, now: string): TicketSla {
   const target = vendor.sla[ticket.priority];
   const respondDue = shift(ticket.openedAt, target.respondMin / 60);
   const resolveDue = shift(ticket.openedAt, target.resolveHr);
@@ -75,7 +75,7 @@ export interface VendorMetrics {
 
 export const SLA_WINDOW_DAYS = 90;
 
-export function vendorMetrics(state: AppState, vendorId: VendorId, now: string = DEMO_NOW): VendorMetrics {
+export function vendorMetrics(state: AppState, vendorId: VendorId, now: string = state.clock): VendorMetrics {
   const vendor = state.vendors.find((v) => v.id === vendorId);
   if (!vendor) throw new Error(`沒有這家廠商：${vendorId}`);
   const since = shift(now, -SLA_WINDOW_DAYS * 24);
@@ -147,7 +147,7 @@ export interface PenaltyCalc {
 }
 
 /** 某家廠商某個月（YYYY-MM，依 SLA 到期日歸月）的計罰試算。還沒解決的逾時工單算到「現在」為止。 */
-export function penaltyOf(state: AppState, vendorId: VendorId, month: string = TODAY.slice(0, 7), now: string = DEMO_NOW): PenaltyCalc {
+export function penaltyOf(state: AppState, vendorId: VendorId, month: string = TODAY.slice(0, 7), now: string = state.clock): PenaltyCalc {
   const vendor = state.vendors.find((v) => v.id === vendorId);
   if (!vendor) throw new Error(`沒有這家廠商：${vendorId}`);
   const rows: PenaltyRow[] = [];

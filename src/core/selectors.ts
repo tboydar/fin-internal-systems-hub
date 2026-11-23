@@ -1,4 +1,4 @@
-import { CLOSE_DAY, DEMO_NOW, MONTH_END, TODAY, workdaysBetween } from './date';
+import { CLOSE_DAY, MONTH_END, TODAY, workdaysBetween } from './date';
 import { L } from './i18n';
 import type { AppState, Domain, Health, Iface, L10n, Run, System, SystemId } from './types';
 
@@ -107,13 +107,13 @@ export function impactOf(state: AppState, systemId: SystemId): Impact {
 }
 
 /** 月結與關帳的倒數，單位是工作日。 */
-export function closeCountdown(): { today: string; monthEnd: string; closeDay: string; toMonthEnd: number; toClose: number; now: string } {
+export function closeCountdown(state: AppState): { today: string; monthEnd: string; closeDay: string; toMonthEnd: number; toClose: number; now: string } {
   return {
     today: TODAY,
     monthEnd: MONTH_END,
     closeDay: CLOSE_DAY,
     toMonthEnd: workdaysBetween(TODAY, MONTH_END),
     toClose: workdaysBetween(TODAY, CLOSE_DAY),
-    now: DEMO_NOW,
+    now: state.clock,
   };
 }

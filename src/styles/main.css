@@ -126,9 +126,8 @@ a:hover {
 /* ───────── Demo 控制列：看 Demo 的人用的，不屬於那套工具，所以用便條的底色與虛線跟下面分開 */
 .demo-bar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
+  flex-direction: column;
+  gap: 6px;
   padding: 7px 16px;
   background: var(--demo);
   border-bottom: 1px dashed var(--demo-line);
@@ -171,7 +170,7 @@ select {
 .shell {
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
-  min-height: calc(100vh - 42px);
+  min-height: calc(100vh - 80px);
 }
 .sidebar {
   background: var(--panel);
@@ -737,6 +736,270 @@ input[type="checkbox"] {
   border-left-color: #f0c05a;
 }
 
+/* ───────── 版面的小積木 */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.stack h3,
+.panel-body h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-top: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line-2);
+}
+.panel-body .table-wrap {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+}
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 14px;
+  align-items: start;
+}
+.int-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.int-main.has-side {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--line-2);
+  font-size: 12.5px;
+}
+.side-panel {
+  max-height: 660px;
+  overflow-y: auto;
+}
+.side-panel .panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.side-panel .panel-head h2 {
+  flex: 1;
+  min-width: 0;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 13px;
+}
+.filters label {
+  color: var(--ink-2);
+}
+.filters select {
+  margin-right: 8px;
+}
+.filters-n {
+  color: var(--ink-3);
+  margin-right: 4px;
+}
+.callout {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--r);
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel-2);
+}
+.callout.is-crit {
+  border-left-color: var(--crit);
+  background: var(--crit-tint);
+}
+.callout.is-warn {
+  border-left-color: var(--warn);
+  background: var(--warn-tint);
+}
+.callout.is-ok {
+  border-left-color: var(--ok);
+  background: var(--ok-tint);
+}
+code,
+pre {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+}
+pre.code {
+  margin: 0;
+  padding: 10px 12px;
+  background: #f4f6f8;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  overflow-x: auto;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* ───────── Demo 控制列的第二排：劇本 */
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  width: 100%;
+}
+.demo-row + .demo-row {
+  padding-top: 6px;
+  border-top: 1px dashed var(--demo-line);
+}
+.demo-row.is-running #scenario-last {
+  flex: 1;
+  min-width: 200px;
+}
+.demo-row label {
+  color: #4a4222;
+}
+
+/* ───────── 流程圖（xyflow 島） */
+.flow {
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+.flow-loading {
+  margin: auto;
+  color: var(--ink-3);
+}
+.flow-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.flow-canvas {
+  flex: 1;
+  min-height: 0;
+}
+.fnode {
+  background: var(--panel);
+  border: 1px solid var(--ink-3);
+  border-left-width: 4px;
+  border-radius: var(--r);
+  padding: 6px 9px 7px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.fnode.tone-ok {
+  border-left-color: var(--ok);
+}
+.fnode.tone-warn {
+  border-left-color: var(--warn);
+}
+.fnode.tone-crit {
+  border-left-color: var(--crit);
+  background: var(--crit-tint);
+}
+.fnode.is-dim {
+  opacity: 0.3;
+}
+.fnode.is-hit {
+  outline: 2px solid var(--crit);
+  outline-offset: 2px;
+}
+.react-flow__node.selected .fnode {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.react-flow__node:focus-visible .fnode,
+.react-flow__edge:focus-visible .react-flow__edge-path {
+  outline: 2px solid var(--primary-2);
+  outline-offset: 3px;
+}
+.fnode-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fnode-code {
+  font-family: var(--font-num);
+  color: var(--ink-3);
+}
+.fnode-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.fnode-mark.is-ok {
+  color: var(--ok);
+}
+.fnode-mark.is-warn {
+  color: var(--warn);
+}
+.fnode-mark.is-crit {
+  color: var(--crit);
+}
+.fnode-title {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.fnode-sub,
+.fnode-stat {
+  color: var(--ink-2);
+}
+.fnode-stat {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+/* 連接點不給人拉線，所以不畫出來；出口與入口錯開，來回兩條線才不會疊在一起 */
+.fnode .fh {
+  opacity: 0;
+  pointer-events: none;
+  width: 2px;
+  height: 2px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
+.fnode .fh-s.fh-left,
+.fnode .fh-s.fh-right {
+  top: 34%;
+}
+.fnode .fh-t.fh-left,
+.fnode .fh-t.fh-right {
+  top: 66%;
+}
+.fnode .fh-s.fh-top,
+.fnode .fh-s.fh-bottom {
+  left: 38%;
+}
+.fnode .fh-t.fh-top,
+.fnode .fh-t.fh-bottom {
+  left: 62%;
+}
+.react-flow__edge {
+  cursor: pointer;
+}
+.react-flow__attribution {
+  font-size: 10px;
+}
+
 /* ───────── 窄螢幕：側欄變成頁面上方的一列選單 */
 @media (max-width: 860px) {
   .shell {
@@ -784,6 +1047,16 @@ input[type="checkbox"] {
   }
   .page {
     padding: 14px 12px 32px;
+  }
+  .split,
+  .int-main.has-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .side-panel {
+    max-height: none;
+  }
+  .flow {
+    height: 520px;
   }
   .demo-tools {
     margin-left: 0;
