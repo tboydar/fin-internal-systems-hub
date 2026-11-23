@@ -1,56 +1,53 @@
 import {
-  AmbientLight,
   BoxGeometry,
   Color,
-  ConeGeometry,
   DirectionalLight,
   DynamicDrawUsage,
-  EdgesGeometry,
-  Group,
+  HalfFloatType,
+  HemisphereLight,
   InstancedMesh,
-  LineBasicMaterial,
-  LineSegments,
+  Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   OrthographicCamera,
-  PCFSoftShadowMap,
+  PCFShadowMap,
+  PlaneGeometry,
+  PointLight,
   Raycaster,
   Scene,
-  SphereGeometry,
   Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { FLOORS, RACKS, type TwinModel } from '../core/twin';
-import type { Domain, Health, SystemId } from '../core/types';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { RACKS, type TwinModel } from '../core/twin';
+import type { SystemId } from '../core/types';
+import { B1, buildModel, PALETTE, slipRoute, TONE } from './model';
 
-// 3D 微縮總行：一棟剖開的總行。樓層是單位，地下機房的機櫃是系統，旁邊一排小房子是營業據點；
-// 沿著機房管線移動的小紙片是傳票與簽呈，速度代表流量、顏色代表狀態。
+// 3D 微縮總行：一棟剖開的總行。樓層是單位，地下機房的機櫃是系統，旁邊的小房子是營業據點；
+// 沿著機房輸送帶移動的小紙片是傳票與簽呈，速度代表流量、顏色代表狀態。
 //
-// 這個檔案只負責「畫」。要畫什麼（哪個系統什麼狀態、哪條介面在跑、哪層樓受影響）全部來自
-// core/twin.ts 的 twinModel()，跟 2D 的頁面讀的是同一份。
+// 這個檔案負責「怎麼看」：光線、陰影、鏡頭、標籤、小紙片與點選。模型本身在 model.ts。
+// 要畫什麼（哪個系統什麼狀態、哪條介面在跑、哪層樓受影響）全部來自 core/twin.ts 的 twinModel()，
+// 跟 2D 的頁面讀的是同一份。
 //
-// 質感是建築事務所的白模：霧面、低飽和、正交鏡頭。沒有發光、沒有粒子、不會自己轉。
+// 質感是建築事務所拍白模的照片：霧面、低飽和、正交鏡頭、一盞主光加柔和的陰影。
+// 主光跟著時間走，重播月結日的 24 小時會看到影子移動、入夜後只剩機房亮著。
+// 沒有發光、沒有粒子、不會自己轉。
 
-const WHITE = 0xf3f2ee;
-const FURNITURE = 0xdde0e1;
-const GROUND = 0xe5e7e6;
-const SOIL = 0xd3d6d4;
-const RACK = 0xc5cbcf;
-const EDGE = 0x9aa3a9;
-const PRIMARY = 0x1d3a56;
-const AFFECTED = 0xe7c5c0;
-const TONE: Record<Health, number> = { ok: 0x25714b, warn: 0xb26f0c, crit: 0xa3271f };
-const SLIP_OK = 0x8792a0;
-
-const W = 9; // 建築的寬（x）
-const D = 4; // 建築的深（z）
-const B1 = 1.6; // 地下一樓的高度，也是地面的高度
-const FLOOR_H = 1.25;
-const RACK_GAP = 0.9;
 const MAX_SLIPS = 96;
+const SLIP_OK = 0x5d7186;
+const SUN_HIGH = new Color(0xfffcf6);
+const SUN_LOW = new Color(0xffeedb);
+const MOON = new Color(0xbfcfe9);
+const UP = new Vector3(0, 1, 0);
 
 export interface TwinLabel {
   id: string;
@@ -64,8 +61,10 @@ export interface TwinOptions {
   labelLayer: HTMLElement;
   labels: TwinLabel[];
   ariaLabel: string;
+  /** 營業據點有幾處，就蓋幾間小房子。 */
+  branches: number;
   lowFx: boolean;
-  /** 使用者要求減少動態：小紙片不移動，只在狀態改變時重畫。 */
+  /** 使用者要求減少動態：小紙片不移動，光線不漸變，只在狀態改變時重畫。 */
   still: boolean;
   onSelect(id: SystemId): void;
 }
@@ -74,34 +73,8 @@ export interface TwinHandle {
   update(model: TwinModel, selected: SystemId | null): void;
   setLabels(labels: TwinLabel[]): void;
   setLowFx(low: boolean): void;
+  resetView(): void;
   dispose(): void;
-}
-
-const rackX = (id: SystemId) => (RACKS.indexOf(id) - (RACKS.length - 1) / 2) * RACK_GAP;
-const floorY = (level: number) => B1 + level * FLOOR_H;
-
-const matte = (color: number) => new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-
-/** 一個有細邊線的方塊：白模靠邊線把體積交代清楚。 */
-function block(
-  group: Group,
-  size: [number, number, number],
-  at: [number, number, number],
-  color: number,
-  opts: { shadow?: boolean; edges?: boolean } = {},
-): Mesh<BoxGeometry, MeshStandardMaterial> {
-  const geometry = new BoxGeometry(...size);
-  const mesh = new Mesh(geometry, matte(color));
-  mesh.position.set(...at);
-  mesh.castShadow = opts.shadow ?? true;
-  mesh.receiveShadow = true;
-  group.add(mesh);
-  if (opts.edges ?? true) {
-    const lines = new LineSegments(new EdgesGeometry(geometry), new LineBasicMaterial({ color: EDGE }));
-    lines.position.copy(mesh.position);
-    group.add(lines);
-  }
-  return mesh;
 }
 
 interface Slip {
@@ -119,16 +92,84 @@ function pathOf(points: Vector3[]): Pick<Slip, 'path' | 'lengths' | 'total'> {
   return { path: points, lengths, total: lengths.reduce((a, b) => a + b, 0) };
 }
 
-function pointAt(slip: Slip, distance: number, out: Vector3): void {
+/** 算出紙片在路徑上的位置，回傳它正走在第幾段（用來決定朝向）。 */
+function pointAt(slip: Slip, distance: number, out: Vector3): number {
   let left = ((distance % slip.total) + slip.total) % slip.total;
   for (let i = 0; i < slip.lengths.length; i++) {
     if (left <= slip.lengths[i]) {
       out.lerpVectors(slip.path[i], slip.path[i + 1], slip.lengths[i] ? left / slip.lengths[i] : 0);
-      return;
+      return i;
     }
     left -= slip.lengths[i];
   }
   out.copy(slip.path[slip.path.length - 1]);
+  return slip.lengths.length - 1;
+}
+
+/** 某個時間的光線。 */
+interface Mood {
+  /** 從場景指向主光的方向。 */
+  dir: Vector3;
+  sun: number;
+  sunColor: Color;
+  sky: number;
+  fill: number;
+  room: number;
+  /** 桌面底色的強度。 */
+  table: number;
+}
+
+const newMood = (): Mood => ({ dir: new Vector3(), sun: 0, sunColor: new Color(), sky: 0, fill: 0, room: 0, table: 0 });
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smooth = (x: number) => {
+  const t = clamp01(x);
+  return t * t * (3 - 2 * t);
+};
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const aim = (azimuth: number, elevation: number, out: Vector3) => {
+  const az = (azimuth * Math.PI) / 180;
+  const el = (elevation * Math.PI) / 180;
+  return out.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+};
+
+const scratchDir = new Vector3();
+const scratchColor = new Color();
+/**
+ * 幾點鐘的光線長什麼樣。白天主光從左前方慢慢移到右前方，中午最高；
+ * 天亮前與天黑後換成比較暗、偏冷的光，機房自己的燈相對就亮了。
+ */
+function moodAt(hour: number, out: Mood): Mood {
+  const day = smooth((hour - 5) / 2) * (1 - smooth((hour - 17) / 2));
+  const t = clamp01((hour - 6) / 12);
+  const height = Math.sin(Math.PI * t);
+  aim(-40, 46, out.dir)
+    .lerp(aim(-62 + 100 * t, 22 + 16 * height, scratchDir), day)
+    .normalize();
+  out.sun = lerp(0.6, 2.0, day);
+  out.sunColor.copy(MOON).lerp(scratchColor.copy(SUN_LOW).lerp(SUN_HIGH, height), day);
+  out.sky = lerp(1.0, 1.9, day);
+  out.fill = lerp(0.3, 0.6, day);
+  out.room = lerp(3.4, 2.0, day);
+  out.table = lerp(0.42, 1, day);
+  return out;
+}
+
+function mix(a: Mood, b: Mood, t: number, out: Mood): void {
+  out.dir.copy(a.dir).lerp(b.dir, t).normalize();
+  out.sun = lerp(a.sun, b.sun, t);
+  out.sunColor.copy(a.sunColor).lerp(b.sunColor, t);
+  out.sky = lerp(a.sky, b.sky, t);
+  out.fill = lerp(a.fill, b.fill, t);
+  out.room = lerp(a.room, b.room, t);
+  out.table = lerp(a.table, b.table, t);
+}
+
+/** 沒有顯示卡、靠 CPU 算圖的環境（遠端桌面、CI）。這種環境自動省掉最花力氣的環境遮蔽。 */
+function isSoftwareGl(renderer: WebGLRenderer): boolean {
+  const gl = renderer.getContext();
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  return /swiftshader|llvmpipe|software|basic render/i.test(name);
 }
 
 /**
@@ -138,111 +179,114 @@ function pointAt(slip: Slip, distance: number, out: Vector3): void {
 export function createTwin(opts: TwinOptions): TwinHandle {
   const { container, labelLayer } = opts;
   let lowFx = opts.lowFx;
-  const renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
-  renderer.shadowMap.enabled = !lowFx;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+  const software = isSoftwareGl(renderer);
+  renderer.shadowMap.type = PCFShadowMap;
+  // 場景幾乎不動，陰影只在光線或狀態改變時重算
+  renderer.shadowMap.autoUpdate = false;
   renderer.domElement.setAttribute('role', 'img');
   renderer.domElement.setAttribute('aria-label', opts.ariaLabel);
   container.appendChild(renderer.domElement);
 
   const scene = new Scene();
-  scene.add(new AmbientLight(0xffffff, 1.55));
-  const sun = new DirectionalLight(0xffffff, 1.5);
-  sun.position.set(-9, 16, 12);
+  const built = buildModel(opts.branches);
+  scene.add(built.group);
+  const center = built.bounds.getCenter(new Vector3());
+  const corners = [0, 1, 2, 3, 4, 5, 6, 7].map(
+    (n) =>
+      new Vector3(
+        n & 1 ? built.bounds.max.x : built.bounds.min.x,
+        n & 2 ? built.bounds.max.y : built.bounds.min.y,
+        n & 4 ? built.bounds.max.z : built.bounds.min.z,
+      ),
+  );
+
+  // ── 光線：一盞會投影的主光、一層天光、右前方一盞很弱的補光，加上機房自己的燈
+  const sky = new HemisphereLight(0xffffff, 0xdddcda, 1);
+  scene.add(sky);
+  const sun = new DirectionalLight(0xffffff, 2);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -16;
-  sun.shadow.camera.right = 16;
-  sun.shadow.camera.top = 14;
-  sun.shadow.camera.bottom = -6;
-  sun.shadow.bias = -0.0006;
-  scene.add(sun);
+  sun.shadow.radius = 2.2;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.02;
+  sun.target.position.copy(center);
+  scene.add(sun, sun.target);
+  const fill = new DirectionalLight(0xe9eff8, 0.6);
+  fill.position.set(10, 6, 14);
+  scene.add(fill);
+  const room = new PointLight(0xfff0d8, 2, 9, 1.6);
+  room.position.set(0, B1 - 0.4, 1.25);
+  room.castShadow = true;
+  room.shadow.mapSize.set(512, 512);
+  room.shadow.radius = 2;
+  room.shadow.bias = -0.002;
+  room.shadow.normalBias = 0.03;
+  room.shadow.camera.near = 0.1;
+  room.shadow.camera.far = 9;
+  scene.add(room);
 
-  const world = new Group();
-  scene.add(world);
+  // 模型放在一張桌面上。桌面大到蓋滿整個畫面，所以畫面的底色就是受光的桌面，入夜會跟著暗下來
+  // 桌面自己帶一點底色（emissive），影子才不會黑成一大片搶走模型的戲
+  const tableTop = new MeshStandardMaterial({ color: 0xa6a8aa, emissive: 0xa3a5a6, roughness: 1, metalness: 0 });
+  const table = new Mesh(new PlaneGeometry(400, 400), tableTop);
+  table.rotation.x = -Math.PI / 2;
+  table.position.set(center.x, built.bounds.min.y - 0.01, center.z);
+  table.receiveShadow = true;
+  scene.add(table);
 
-  // ── 地面：建築兩側的地面與底下的土層，機房才看得出是在地下
-  block(world, [21, 0.12, D + 3], [2.5, -0.06, 0], GROUND, { shadow: false });
-  for (const [x, width] of [
-    [-(W / 2 + 1.75), 3.3],
-    [W / 2 + 4.3, 8.4],
-  ]) {
-    block(world, [width, B1 - 0.12, D + 3], [x, (B1 - 0.12) / 2, 0], SOIL, { shadow: false, edges: false });
-    block(world, [width, 0.12, D + 3], [x, B1 - 0.06, 0], GROUND, { shadow: false });
-  }
-
-  // ── 建築：每一層是樓板、背牆與兩側的牆；正面不做牆，所以看得到裡面（剖面）
-  const slabs = new Map<Domain, Mesh<BoxGeometry, MeshStandardMaterial>>();
-  const levels = FLOORS.length + 1; // 地下一樓加五層
-  for (let i = 0; i < levels; i++) {
-    const y = i === 0 ? 0 : floorY(i - 1);
-    const h = i === 0 ? B1 : FLOOR_H;
-    const slab = block(world, [W, 0.1, D], [0, y + 0.05, 0], WHITE);
-    block(world, [W, h - 0.1, 0.1], [0, y + 0.1 + (h - 0.1) / 2, -D / 2 + 0.05], WHITE);
-    block(world, [0.1, h - 0.1, D], [-W / 2 + 0.05, y + 0.1 + (h - 0.1) / 2, 0], WHITE);
-    block(world, [0.1, h - 0.1, D], [W / 2 - 0.05, y + 0.1 + (h - 0.1) / 2, 0], WHITE);
-    if (i > 0) {
-      slabs.set(FLOORS[i - 1].domain, slab);
-      // 桌子：兩排，每排四張
-      for (let row = 0; row < 2; row++) {
-        for (let col = 0; col < 4; col++) block(world, [1.2, 0.34, 0.5], [-3.1 + col * 2.05, y + 0.27, -0.9 + row * 1.35], FURNITURE, { edges: false });
-      }
+  const lightView = new Matrix4();
+  const probe = new Vector3();
+  /** 把陰影的範圍收到剛好包住模型，同樣大小的陰影貼圖才夠細。 */
+  function fitShadow(): void {
+    lightView.lookAt(sun.position, center, UP).invert();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let near = Infinity;
+    for (const corner of corners) {
+      probe.copy(corner).sub(sun.position).applyMatrix4(lightView);
+      minX = Math.min(minX, probe.x);
+      maxX = Math.max(maxX, probe.x);
+      minY = Math.min(minY, probe.y);
+      maxY = Math.max(maxY, probe.y);
+      near = Math.min(near, -probe.z);
     }
-  }
-  block(world, [W + 0.3, 0.12, D + 0.3], [0, floorY(FLOORS.length) + 0.06, 0], WHITE);
-
-  // ── 機房：九個機櫃。機櫃上方的小標記用形狀表示狀態（圓是正常、三角是注意、方塊是中斷）
-  const racks = new Map<SystemId, Mesh<BoxGeometry, MeshStandardMaterial>>();
-  const marks = new Map<SystemId, Record<Health, Mesh>>();
-  const risers = new Map<SystemId, Mesh<BoxGeometry, MeshStandardMaterial>>();
-  const markShapes: Record<Health, () => Mesh> = {
-    ok: () => new Mesh(new SphereGeometry(0.1, 16, 12), matte(TONE.ok)),
-    warn: () => new Mesh(new ConeGeometry(0.13, 0.22, 3), matte(TONE.warn)),
-    crit: () => new Mesh(new BoxGeometry(0.19, 0.19, 0.19), matte(TONE.crit)),
-  };
-  for (const id of RACKS) {
-    const x = rackX(id);
-    const rack = block(world, [0.5, 1.0, 0.55], [x, 0.6, -0.9], RACK);
-    rack.userData.systemId = id;
-    racks.set(id, rack);
-    const set = {} as Record<Health, Mesh>;
-    for (const health of ['ok', 'warn', 'crit'] as const) {
-      const mark = markShapes[health]();
-      mark.position.set(x, 1.3, -0.9);
-      mark.visible = false;
-      world.add(mark);
-      set[health] = mark;
-    }
-    marks.set(id, set);
-    // 機櫃到樓上的立管，貼著背牆
-    risers.set(
-      id,
-      block(world, [0.05, floorY(FLOORS.length) - 1.2, 0.05], [x, 1.2 + (floorY(FLOORS.length) - 1.2) / 2, -D / 2 + 0.16], FURNITURE, {
-        shadow: false,
-        edges: false,
-      }),
-    );
-  }
-  // 機房地上的管線槽：小紙片沿著它在機櫃之間移動
-  block(world, [RACK_GAP * RACKS.length + 0.4, 0.04, 0.9], [0, 0.12, 0.35], FURNITURE, { shadow: false });
-
-  // ── 營業據點：右邊地面上的一排小房子
-  const houses: Mesh<BoxGeometry, MeshStandardMaterial>[] = [];
-  for (let i = 0; i < 8; i++) {
-    const x = W / 2 + 1.2 + i * 0.95;
-    houses.push(block(world, [0.6, 0.5, 0.6], [x, B1 + 0.25, 0.4], WHITE));
-    const roof = new Mesh(new ConeGeometry(0.5, 0.32, 4), matte(FURNITURE));
-    roof.position.set(x, B1 + 0.66, 0.4);
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    world.add(roof);
+    const cam = sun.shadow.camera;
+    cam.left = minX - 0.5;
+    cam.right = maxX + 0.5;
+    cam.bottom = minY - 0.5;
+    cam.top = maxY + 0.5;
+    cam.near = Math.max(0.5, near - 1);
+    // 影子會落在模型後面的桌面上，所以遠的那一頭要留長一點
+    cam.far = near + 60;
+    cam.updateProjectionMatrix();
   }
 
-  // ── 小紙片：一個 InstancedMesh 畫全部
-  const slipMesh = new InstancedMesh(new BoxGeometry(0.2, 0.02, 0.13), new MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 }), MAX_SLIPS);
+  const mood = moodAt(10, newMood());
+  const moodFrom = newMood();
+  const moodGoal = moodAt(10, newMood());
+  let moodT = 1;
+  let moodHour = -1;
+  function applyMood(): void {
+    sun.position.copy(center).addScaledVector(mood.dir, 30);
+    sun.intensity = mood.sun;
+    sun.color.copy(mood.sunColor);
+    sky.intensity = mood.sky;
+    fill.intensity = mood.fill;
+    room.intensity = mood.room;
+    tableTop.emissiveIntensity = mood.table;
+    fitShadow();
+    renderer.shadowMap.needsUpdate = true;
+  }
+
+  // ── 小紙片：一個 InstancedMesh 畫全部。用不受光的材質，白天晚上顏色都一樣好認
+  const slipMesh = new InstancedMesh(new BoxGeometry(0.25, 0.02, 0.16), new MeshBasicMaterial({ color: 0xffffff }), MAX_SLIPS);
   slipMesh.instanceMatrix.setUsage(DynamicDrawUsage);
   slipMesh.count = 0;
-  world.add(slipMesh);
+  slipMesh.frustumCulled = false;
+  scene.add(slipMesh);
   let slips: Slip[] = [];
   const dummy = new Object3D();
   const point = new Vector3();
@@ -252,14 +296,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
     slips = [];
     const active = model.flows.filter((f) => f.active);
     active.forEach((flow, n) => {
-      const lane = 0.12 + (n % 6) * 0.1;
-      const from = rackX(flow.from);
-      const to = rackX(flow.to);
-      const y = 0.17;
-      const points = [new Vector3(from, y, -0.55), new Vector3(from, y, lane)];
-      if (flow.viaEsb) points.push(new Vector3(rackX('esb'), y, lane), new Vector3(rackX('esb'), y, -0.5), new Vector3(rackX('esb'), y, lane));
-      points.push(new Vector3(to, y, lane), new Vector3(to, y, -0.55));
-      const path = pathOf(points);
+      const path = pathOf(slipRoute(flow.from, flow.to, flow.viaEsb, n));
       // 流量越大，紙片越多、走得越快；中斷的介面紙片停在原地
       const count = Math.min(lowFx ? 1 : flow.level, Math.floor((MAX_SLIPS - slips.length) / Math.max(1, active.length - n)) || 1);
       for (let k = 0; k < count && slips.length < MAX_SLIPS; k++) {
@@ -278,8 +315,10 @@ export function createTwin(opts: TwinOptions): TwinHandle {
 
   function placeSlips(seconds: number): void {
     slips.forEach((slip, i) => {
-      pointAt(slip, slip.offset + seconds * slip.speed, point);
+      const segment = pointAt(slip, slip.offset + seconds * slip.speed, point);
       dummy.position.copy(point);
+      // 沿著輸送帶走的時候橫著，進出機櫃的時候轉成直的
+      dummy.rotation.y = Math.abs(slip.path[segment + 1].z - slip.path[segment].z) > 0.001 ? Math.PI / 2 : 0;
       dummy.updateMatrix();
       slipMesh.setMatrixAt(i, dummy.matrix);
     });
@@ -287,31 +326,99 @@ export function createTwin(opts: TwinOptions): TwinHandle {
   }
 
   // ── 鏡頭：正交、固定的斜上方視角。可以小幅轉動與縮放，但不會自己轉
-  const camera = new OrthographicCamera(-10, 10, 6, -6, 0.1, 100);
-  const target = new Vector3(2.6, 3.6, 0);
-  camera.position.set(target.x + 9, target.y + 7.5, target.z + 16);
-  camera.lookAt(target);
+  const camera = new OrthographicCamera(-10, 10, 6, -6, 0.1, 200);
+  const home = aim(30, 21, new Vector3()).multiplyScalar(40);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.copy(target);
   controls.enablePan = false;
   controls.enableDamping = false;
-  controls.minPolarAngle = 0.95;
-  controls.maxPolarAngle = 1.45;
-  controls.minAzimuthAngle = -0.15;
+  controls.zoomToCursor = true;
+  controls.minZoom = 0.9;
+  controls.maxZoom = 3.2;
+  controls.minPolarAngle = 0.9;
+  controls.maxPolarAngle = 1.4;
+  controls.minAzimuthAngle = -0.12;
   controls.maxAzimuthAngle = 0.95;
-  controls.update();
+  // 觸控裝置上，直的滑動留給頁面捲動，橫的滑動才轉鏡頭
+  if (matchMedia('(pointer: coarse)').matches) renderer.domElement.style.touchAction = 'pan-y';
 
-  // ── 標籤：疊在畫面上的 HTML 按鈕，位置由 3D 座標投影而來。機櫃的標籤可以用鍵盤選取
-  const anchors = new Map<string, Vector3>();
-  // 機櫃靠得近，標籤一高一低錯開才不會疊在一起
-  for (const id of RACKS) anchors.set(`system:${id}`, new Vector3(rackX(id), RACKS.indexOf(id) % 2 ? 1.5 : 1.02, -0.6));
-  for (let i = 0; i < FLOORS.length; i++) anchors.set(`floor:${FLOORS[i].domain}`, new Vector3(-W / 2 - 0.15, floorY(i) + 0.62, D / 2));
-  anchors.set('branches:all', new Vector3(W / 2 + 4.5, B1 + 1.25, 0.4));
+  /** 讓整個模型剛好放進畫面。左邊要留給樓層標籤，標籤多寬就留多寬（英文的標籤比中文長）。 */
+  function frame(): void {
+    const w = Math.max(container.clientWidth, 1);
+    const h = Math.max(container.clientHeight, 1);
+    camera.updateMatrixWorld();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const corner of built.outline) {
+      probe.copy(corner).applyMatrix4(camera.matrixWorldInverse);
+      minX = Math.min(minX, probe.x);
+      maxX = Math.max(maxX, probe.x);
+      minY = Math.min(minY, probe.y);
+      maxY = Math.max(maxY, probe.y);
+    }
+    const pad = 10;
+    let padLeft = pad;
+    // 先照模型本身取景，再看最左邊的樓層標籤有沒有被切到；被切到就把左邊的留白加大，重算一次
+    for (let pass = 0; pass < 3; pass++) {
+      const scale = Math.min((w - padLeft - pad) / (maxX - minX), (h - pad * 2) / (maxY - minY));
+      const left = minX - padLeft / scale - (w / scale - (maxX - minX) - (padLeft + pad) / scale) / 2;
+      const bottom = minY - pad / scale - (h / scale - (maxY - minY) - (pad * 2) / scale) / 2;
+      camera.left = left;
+      camera.right = left + w / scale;
+      camera.bottom = bottom;
+      camera.top = bottom + h / scale;
+      camera.updateProjectionMatrix();
+      let edge = Infinity;
+      for (const [key, anchor] of built.anchors) if (key.startsWith('floor:')) edge = Math.min(edge, toScreen(anchor, w, h)[0] - floorWide);
+      if (edge >= 6 || padLeft > w * 0.45) break;
+      padLeft += 6 - edge;
+    }
+  }
+
+  function resetView(): void {
+    controls.target.copy(center);
+    camera.position.copy(center).add(home);
+    camera.zoom = 1;
+    camera.lookAt(center);
+    controls.update();
+    frame();
+    draw();
+  }
+
+  // ── 後製：只有一道環境遮蔽，讓牆角、桌腳、機櫃之間有該有的暗部。降低特效時整段跳過
+  let composer: EffectComposer | null = null;
+  function ensureComposer(): EffectComposer {
+    if (composer) return composer;
+    composer = new EffectComposer(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }));
+    composer.addPass(new RenderPass(scene, camera));
+    const ao = new GTAOPass(scene, camera, 1, 1);
+    ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 16, screenSpaceRadius: false });
+    ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, radiusExponent: 1.3, rings: 2, samples: 12 });
+    ao.blendIntensity = 0.9;
+    composer.addPass(ao);
+    composer.addPass(new OutputPass());
+    return composer;
+  }
+  /** 跑了一小段發現一幀要畫太久的話，自己把環境遮蔽關掉，不用等使用者去勾「降低特效」。 */
+  let strained = false;
+  let sampled = 0;
+  let sampledTime = 0;
+  const fancy = () => !lowFx && !software && !strained;
+
+  // ── 標籤：疊在畫面上的 HTML，位置由 3D 座標投影而來。機櫃的標籤是按鈕，可以用鍵盤選取
   let labelEls = new Map<string, HTMLElement>();
+  let stems = new Map<string, HTMLElement>();
+  /** 機櫃標籤裡最寬的有幾個像素寬，以及標籤的高度。 */
+  let widest = 44;
+  let tall = 16;
+  /** 樓層標籤裡最寬的有幾個像素寬。 */
+  let floorWide = 60;
 
   function setLabels(labels: TwinLabel[]): void {
     labelLayer.replaceChildren();
     labelEls = new Map();
+    stems = new Map();
     for (const label of labels) {
       const el = document.createElement(label.kind === 'system' ? 'button' : 'span');
       el.className = `twin-label is-${label.kind}`;
@@ -321,72 +428,128 @@ export function createTwin(opts: TwinOptions): TwinHandle {
         el.type = 'button';
         el.dataset.system = label.id;
         el.setAttribute('aria-label', label.title);
+        // 引線：從標籤垂直接到機櫃
+        const stem = document.createElement('i');
+        stem.className = 'twin-stem';
+        labelLayer.appendChild(stem);
+        stems.set(label.id, stem);
       }
       labelLayer.appendChild(el);
       labelEls.set(`${label.kind}:${label.id}`, el);
     }
+    const rackLabels = [...labelEls].filter(([key]) => key.startsWith('system:')).map(([, el]) => el);
+    widest = Math.max(24, ...rackLabels.map((el) => el.offsetWidth));
+    tall = Math.max(12, ...rackLabels.map((el) => el.offsetHeight));
+    floorWide = Math.max(40, ...[...labelEls].filter(([key]) => key.startsWith('floor:')).map(([, el]) => el.offsetWidth));
+    // 換語言之後標籤寬度不一樣，取景要跟著重算
+    frame();
     placeLabels();
   }
 
   const projected = new Vector3();
+  function toScreen(anchor: Vector3, w: number, h: number): [number, number] {
+    projected.copy(anchor).project(camera);
+    return [((projected.x + 1) / 2) * w, ((1 - projected.y) / 2) * h];
+  }
+
   function placeLabels(): void {
     const w = container.clientWidth;
     const h = container.clientHeight;
+    // 機櫃靠得近：看相鄰兩個機櫃在畫面上隔多遠，決定標籤要錯開成幾排
+    const first = built.anchors.get(`system:${RACKS[0]}`);
+    const second = built.anchors.get(`system:${RACKS[1]}`);
+    const gap = first && second ? Math.abs(toScreen(second, w, h)[0] - toScreen(first, w, h)[0]) : 30;
+    const rows = Math.min(4, Math.max(2, Math.ceil((widest + 2) / Math.max(gap, 1))));
+    // 排與排的間距：標籤自己的高度，加上「越右邊的機櫃在畫面上越低」的那一點落差
+    const pitch = tall + 3 + gap * 0.22;
     for (const [key, el] of labelEls) {
-      const anchor = anchors.get(key);
+      const anchor = built.anchors.get(key);
       if (!anchor) continue;
-      projected.copy(anchor).project(camera);
-      el.style.left = `${((projected.x + 1) / 2) * w}px`;
-      el.style.top = `${((1 - projected.y) / 2) * h}px`;
+      const [x, y] = toScreen(anchor, w, h);
+      const [kind, id] = key.split(':');
+      if (kind !== 'system') {
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        continue;
+      }
+      const lift = 6 + (RACKS.indexOf(id as SystemId) % rows) * pitch;
+      el.style.left = `${x}px`;
+      el.style.top = `${y - lift}px`;
+      const stem = stems.get(id);
+      if (stem) {
+        stem.style.left = `${x}px`;
+        stem.style.top = `${y - lift}px`;
+        stem.style.height = `${lift}px`;
+      }
     }
   }
 
   function resize(): void {
     const w = Math.max(container.clientWidth, 1);
     const h = Math.max(container.clientHeight, 1);
-    const aspect = w / h;
-    // 以寬度為準把整個場景放進畫面；畫面很窄的時候改以高度為準
-    const halfW = Math.max(10.4, 5.7 * aspect);
-    camera.left = -halfW;
-    camera.right = halfW;
-    camera.top = halfW / aspect;
-    camera.bottom = -halfW / aspect;
-    camera.updateProjectionMatrix();
-    renderer.setPixelRatio(lowFx ? 1 : Math.min(window.devicePixelRatio, 2));
+    const ratio = lowFx || software ? 1 : Math.min(window.devicePixelRatio, 2);
+    renderer.setPixelRatio(ratio);
     renderer.setSize(w, h, false);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
+    if (fancy()) {
+      const fx = ensureComposer();
+      fx.setPixelRatio(ratio);
+      fx.setSize(w, h);
+    }
+    frame();
     draw();
   }
 
   let seconds = 0;
   function draw(): void {
     placeSlips(seconds);
-    renderer.render(scene, camera);
+    if (fancy()) ensureComposer().render();
+    else renderer.render(scene, camera);
     placeLabels();
   }
 
-  // ── 動畫迴圈：只有在看得到、分頁在前景、而且使用者沒有要求減少動態時才跑
+  // ── 動畫迴圈：只有在看得到、分頁在前景時才跑；紙片不動、光線也沒在變的時候就停
   let raf = 0;
   let last = 0;
   let onScreen = true;
   let disposed = false;
   let frameNo = 0;
-  const shouldRun = () => !disposed && !opts.still && onScreen && !document.hidden && slips.some((s) => s.speed > 0);
-  function frame(now: number): void {
+  const moving = () => moodT < 1 || (!opts.still && slips.some((s) => s.speed > 0));
+  const shouldRun = () => !disposed && onScreen && !document.hidden && moving();
+  function tick(now: number): void {
     raf = 0;
     if (!shouldRun()) return;
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
-    seconds += dt;
+    if (!opts.still) seconds += dt;
+    const fading = moodT < 1;
+    // 前十幀不算（在編譯著色器），接著量 45 幀：平均超過 30 毫秒就當作這台機器吃力。
+    // 光線漸變的那幾幀每幀都重算陰影，本來就比較慢，不列入
+    if (fancy() && !fading && ++sampled > 10) {
+      sampledTime += dt;
+      if (sampled === 55) {
+        if (sampledTime / 45 > 0.03) {
+          strained = true;
+          resize();
+        }
+        sampled = 0;
+        sampledTime = 0;
+      }
+    }
+    if (fading) {
+      moodT = Math.min(1, moodT + dt / 0.6);
+      mix(moodFrom, moodGoal, smooth(moodT), mood);
+      applyMood();
+    }
     // 降低特效：每兩幀畫一次
-    if (!lowFx || frameNo++ % 2 === 0) draw();
-    raf = requestAnimationFrame(frame);
+    if (fading || !lowFx || frameNo++ % 2 === 0) draw();
+    raf = requestAnimationFrame(tick);
   }
   function sync(): void {
     if (shouldRun() && !raf) {
       last = performance.now();
-      raf = requestAnimationFrame(frame);
+      raf = requestAnimationFrame(tick);
     }
   }
   document.addEventListener('visibilitychange', sync);
@@ -402,7 +565,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
   // ── 點選機櫃
   const raycaster = new Raycaster();
   const pointer = new Vector2();
-  const pickables = [...racks.values()];
+  const pickables = [...built.racks.values()];
   function pick(event: PointerEvent): SystemId | null {
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
@@ -411,6 +574,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
     return (hit?.object.userData.systemId as SystemId | undefined) ?? null;
   }
   let downAt: [number, number] | null = null;
+  let hovered: SystemId | null = null;
   const onDown = (event: PointerEvent) => {
     downAt = [event.clientX, event.clientY];
   };
@@ -421,7 +585,12 @@ export function createTwin(opts: TwinOptions): TwinHandle {
     if (id) opts.onSelect(id);
   };
   const onMove = (event: PointerEvent) => {
-    renderer.domElement.style.cursor = pick(event) ? 'pointer' : 'grab';
+    const id = pick(event);
+    renderer.domElement.style.cursor = id ? 'pointer' : 'grab';
+    if (id === hovered) return;
+    if (hovered) labelEls.get(`system:${hovered}`)?.classList.remove('is-hover');
+    if (id) labelEls.get(`system:${id}`)?.classList.add('is-hover');
+    hovered = id;
   };
   renderer.domElement.addEventListener('pointerdown', onDown);
   renderer.domElement.addEventListener('pointerup', onUp);
@@ -434,28 +603,57 @@ export function createTwin(opts: TwinOptions): TwinHandle {
 
   function update(model: TwinModel, selected: SystemId | null): void {
     for (const sys of model.systems) {
-      const set = marks.get(sys.id);
+      const set = built.marks.get(sys.id);
       if (set) for (const health of ['ok', 'warn', 'crit'] as const) set[health].visible = health === sys.health;
-      const rack = racks.get(sys.id);
-      if (rack) rack.material.color.setHex(sys.id === selected ? PRIMARY : model.down.includes(sys.id) ? TONE.crit : RACK);
-      const riser = risers.get(sys.id);
-      if (riser) riser.material.color.setHex(model.down.includes(sys.id) ? TONE.crit : sys.health === 'ok' ? FURNITURE : TONE[sys.health]);
-      labelEls.get(`system:${sys.id}`)?.classList.toggle('is-selected', sys.id === selected);
-      labelEls.get(`system:${sys.id}`)?.setAttribute('data-health', sys.health);
+      const down = model.down.includes(sys.id);
+      built.racks.get(sys.id)?.material.color.setHex(sys.id === selected ? PALETTE.primary : down ? TONE.crit : PALETTE.rack);
+      const ring = built.rings.get(sys.id);
+      if (ring) ring.visible = sys.id === selected;
+      const label = labelEls.get(`system:${sys.id}`);
+      label?.classList.toggle('is-selected', sys.id === selected);
+      label?.setAttribute('data-health', down ? 'crit' : sys.health);
+      stems.get(sys.id)?.setAttribute('data-health', down ? 'crit' : sys.health);
     }
-    // 受影響的樓層：樓板換成偏紅的霧面色。不是發光，只是換了材質的顏色
+    // 受影響的樓層：樓板換成偏紅的霧面色，切面換成中斷的顏色。不是發光，只是換了材質的顏色
     for (const floor of model.floors) {
-      slabs.get(floor.domain)?.material.color.setHex(floor.affected ? AFFECTED : WHITE);
-      labelEls.get(`floor:${floor.domain}`)?.classList.toggle('is-affected', floor.affected);
+      const parts = built.floors.get(floor.domain);
+      parts?.slab.color.setHex(floor.affected ? PALETTE.affected : PALETTE.white);
+      parts?.cut.color.setHex(floor.affected ? TONE.crit : PALETTE.cut);
+      const label = labelEls.get(`floor:${floor.domain}`);
+      label?.classList.toggle('is-affected', floor.affected);
+      label?.setAttribute('data-health', floor.health);
     }
-    for (const house of houses) house.material.color.setHex(model.affected?.domains.includes('sales') ? AFFECTED : WHITE);
+    built.houses.color.setHex(model.affected?.domains.includes('sales') ? PALETTE.affected : PALETTE.white);
     buildSlips(model);
-    renderer.shadowMap.needsUpdate = true;
+    // 光線跟著時間走：第一次直接套用，之後用半秒多一點漸變過去
+    if (model.hour !== moodHour) {
+      const firstTime = moodHour < 0;
+      moodHour = model.hour;
+      moodAt(model.hour, moodGoal);
+      if (firstTime || opts.still || lowFx) {
+        mix(moodGoal, moodGoal, 1, mood);
+        moodT = 1;
+      } else {
+        mix(mood, mood, 1, moodFrom);
+        moodT = 0;
+      }
+    }
+    applyMood();
     draw();
     sync();
   }
 
+  function applyFx(): void {
+    renderer.shadowMap.enabled = !lowFx;
+    sun.castShadow = !lowFx;
+    room.castShadow = !lowFx;
+    renderer.shadowMap.needsUpdate = true;
+  }
+
+  applyFx();
+  applyMood();
   setLabels(opts.labels);
+  resetView();
   resize();
 
   return {
@@ -463,11 +661,11 @@ export function createTwin(opts: TwinOptions): TwinHandle {
     setLabels,
     setLowFx(low) {
       lowFx = low;
-      renderer.shadowMap.enabled = !low;
-      sun.castShadow = !low;
+      applyFx();
       resize();
       sync();
     },
+    resetView,
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
@@ -486,6 +684,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
         if (Array.isArray(material)) for (const m of material) m.dispose();
         else material?.dispose();
       });
+      composer?.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();

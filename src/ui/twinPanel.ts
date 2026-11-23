@@ -12,7 +12,7 @@ import { $, html, num, on, raw, type Safe, setHtml, toast } from './dom';
 import { canOpen } from './shell';
 import { actionBtn, facts, healthLabel, mark, personName, systemName, table, tag, vendorName } from './widgets';
 
-// 總覽上的「微縮總行」區塊：左邊是 3D 場景，右邊是資料卡與清單，下面是月結日 24 小時的時間軸。
+// 總覽上的「微縮總行」區塊：左邊是 3D 場景與圖例，右邊是資料卡與清單，下面是月結日 24 小時的時間軸。
 // 3D 場景與右邊的清單都由 twinModel() 的同一份結果畫出來。
 // 沒有 WebGL 時，左邊改成同一份資料的表格，其他都照常。
 
@@ -39,12 +39,17 @@ export function mountTwinPanel(host: HTMLElement, first: Route): { route(next: R
     host,
     html`<section class="panel" id="twin">
       <div class="panel-head"><h2>${T('微縮總行', 'Miniature head office')}</h2>
-        <span class="panel-note">${T('樓層是單位，地下機房的機櫃是系統，右邊一排小房子是營業據點。點機櫃看資料卡。', 'Floors are units, basement racks are systems, the row of houses on the right is the branches. Select a rack for its data card.')}</span>
+        <span class="panel-note">${T('沿著正面剖開的總行：樓層是單位，地下機房的機櫃是系統，右邊的小房子是營業據點。點機櫃看資料卡，拖曳可以轉動。', 'A head office cut open along its front: floors are units, basement racks are systems, the houses on the right are the branches. Select a rack for its data card; drag to turn the model.')}</span>
         <div class="actions"><label class="check"><input type="checkbox" id="twin-lowfx" ${store.prefs.lowFx ? raw('checked') : ''} /> ${T('降低特效', 'Reduce effects')}</label></div>
       </div>
       <div class="twin-grid">
         <div class="twin-left">
-          <div class="twin-stage" id="twin-stage"><div class="twin-labels" id="twin-labels"></div><p class="twin-msg" id="twin-msg">${T('3D 場景載入中', 'Loading the 3D scene')}</p></div>
+          <div class="twin-stage" id="twin-stage"><div class="twin-labels" id="twin-labels"></div><p class="twin-msg" id="twin-msg">${T('3D 場景載入中', 'Loading the 3D scene')}</p>
+            <button type="button" class="btn btn-sm twin-reset" id="twin-reset" hidden>${T('重設視角', 'Reset the view')}</button></div>
+          <div class="twin-key" id="twin-key">
+            <span class="twin-key-item">${mark('ok')}</span><span class="twin-key-item">${mark('warn')}</span><span class="twin-key-item">${mark('crit')}</span>
+            <span class="twin-key-item"><i class="twin-key-slip"></i>${T('小紙片是傳票與簽呈：越快流量越大，停住的是中斷', 'Paper slips are vouchers and approvals: faster means more volume, a stopped slip is a failure')}</span>
+          </div>
           <div class="twin-time" id="twin-time"></div>
         </div>
         <div class="twin-side" id="twin-side" aria-live="polite"></div>
@@ -213,6 +218,7 @@ export function mountTwinPanel(host: HTMLElement, first: Route): { route(next: R
       update();
       $('#twin-hour', host).focus();
     }),
+    on(host, 'click', '#twin-reset', () => twin?.resetView()),
     on(host, 'click', '#twin-now', () => {
       stop();
       hour = null;
@@ -264,11 +270,13 @@ export function mountTwinPanel(host: HTMLElement, first: Route): { route(next: R
             '微縮總行的 3D 剖面圖。同樣的內容在右邊的清單與下面的表格裡。',
             'A 3D section of the miniature head office. The same content is in the list on the right and the tables below.',
           ),
+          branches: store.state.branches.length,
           lowFx: store.prefs.lowFx,
           still: matchMedia('(prefers-reduced-motion: reduce)').matches,
           onSelect: (id) => setQuery({ focus: id }),
         });
         host.querySelector('#twin-msg')?.remove();
+        $('#twin-reset', host).hidden = false;
         update();
       })
       .catch(() => {
