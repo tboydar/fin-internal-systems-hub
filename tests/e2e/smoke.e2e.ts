@@ -3,7 +3,7 @@ import { menu, open, ROLES, signInAs } from './helpers';
 
 // 冒煙測試：每個角色登入後，選單上的每一頁都開得起來；沒權限的頁面會看到說明。
 
-const ALL_PAGES = ['/overview', '/rbac', '/about'];
+const ALL_PAGES = ['/overview', '/integration', '/rbac', '/about'];
 
 for (const role of ROLES) {
   test(`${role}：選單上的每一頁都開得起來，而且沒有錯誤`, async ({ page }) => {
@@ -116,4 +116,37 @@ test('版號寫在 meta、側欄與關於頁', async ({ page }) => {
   await expect(page.locator('#app-version')).toHaveText(version ?? '');
   await open(page, '/overview');
   await expect(page.locator('#app-version')).toHaveText(version ?? '');
+});
+
+test('整合架構：點清單上的介面會開明細；篩選條件留在網址裡，重新整理後還在', async ({ page }) => {
+  await open(page, '/integration');
+  await expect(page.locator('.react-flow__node')).toHaveCount(9);
+  await page.click('#iface-table a:has-text("INT-014")');
+  await expect(page.locator('#int-side')).toContainText('欄位對應');
+  await expect(page.locator('#int-side')).toContainText('COST_CENTER');
+  await page.selectOption('#f-health', 'attention');
+  await expect(page.locator('#iface-table tbody tr')).toHaveCount(4);
+  await page.reload();
+  await expect(page.locator('#f-health')).toHaveValue('attention');
+  await expect(page.locator('#iface-table tbody tr')).toHaveCount(4);
+  await expect(page.locator('#int-side')).toContainText('INT-014');
+});
+
+test('整合架構：注入故障後，總覽上的數字跟著變；還原後恢復', async ({ page }) => {
+  await open(page, '/integration?sys=hr');
+  await expect(page.locator('#int-side')).toContainText('如果它停了');
+  await page.click('[data-act="fault"]');
+  await expect(page.locator('#page-sum')).toContainText('7 條中斷');
+  await open(page, '/overview');
+  await expect(page.locator('#page-sum')).toContainText('7 條中斷');
+  await page.click('#reset-btn');
+  await page.click('#do-reset');
+  await expect(page.locator('#page-sum')).toContainText('1 條中斷');
+});
+
+test('財務主管看不到整合架構，也不能注入故障', async ({ page }) => {
+  await open(page, '/overview');
+  await signInAs(page, 'finance');
+  await page.goto('#/integration');
+  await expect(page.locator('#view .notice h1')).toHaveText('這個角色看不到這一頁');
 });

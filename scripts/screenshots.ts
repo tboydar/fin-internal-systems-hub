@@ -19,6 +19,9 @@ interface Shot {
 const SHOTS: Shot[] = [
   { file: '01-overview-techlead', hash: '/overview' },
   { file: '02-overview-finance', hash: '/overview', role: 'finance' },
+  { file: '07-integration', hash: '/integration' },
+  { file: '08-integration-iface', hash: '/integration?iface=INT-014' },
+  { file: '09-integration-impact', hash: '/integration?sys=hr&impact=hr' },
   { file: '03-rbac-admin', hash: '/rbac', role: 'admin' },
   { file: '04-about', hash: '/about' },
   { file: '05-overview-en', hash: '/overview', lang: 'en' },
@@ -37,6 +40,9 @@ for (const shot of SHOTS) {
   await page.goto(`${base}#${shot.hash}`);
   await page.waitForSelector(`#view[data-page="${shot.hash.split('?')[0]}"] h1`);
   await page.waitForLoadState('networkidle');
+  // 流程圖是延遲載入的，等它畫出節點
+  if (shot.hash.startsWith('/integration')) await page.waitForSelector('.react-flow__node');
+  await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/${shot.file}.png`, fullPage: true });
   console.log(`${OUT}/${shot.file}.png`);
   await context.close();

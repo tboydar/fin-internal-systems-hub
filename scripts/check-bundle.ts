@@ -10,7 +10,9 @@ import { gzipSync } from 'node:zlib';
 
 const DIST = 'dist';
 /** gzip 之後的上限，單位是位元組。 */
-const BUDGET = { initialJs: 60_000, initialCss: 12_000, anyChunk: 400_000 };
+// 首屏的 JS 包含整份假資料（24 條介面、10 條對帳規則的 SQL、文件與路徑圖的雙語文字），
+// 因為它是這個 Demo 的「資料庫」，而且所有頁面讀同一份。扣掉資料，程式本身大約 25 kB。
+const BUDGET = { initialJs: 90_000, initialCss: 12_000, anyChunk: 400_000 };
 /** 只會出現在 three、xyflow、react-dom 裡的字串。 */
 const HEAVY: [name: string, marker: RegExp][] = [
   ['three', /WebGLRenderer|THREE\.WebGL/],

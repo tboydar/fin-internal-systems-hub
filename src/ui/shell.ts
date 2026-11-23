@@ -36,6 +36,7 @@ export const PAGES: PageDef[] = [
   // 總覽是預設頁，直接打包進主程式；其餘頁面各自切成獨立 chunk，點到才下載。
   { path: '/overview', perm: 'page.overview', name: { zh: '總覽', en: 'Overview' }, icon: 'overview', load: async () => ({ mount: mountOverview }) },
   {
+    path: '/integration',
     perm: 'page.integration',
     name: { zh: '整合架構', en: 'Integration' },
     icon: 'integration',
