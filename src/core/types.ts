@@ -1,0 +1,511 @@
+// 全站共用的資料型別。所有內容皆為虛構（mock data）。
+
+export type Lang = 'zh' | 'en';
+/** 雙語文字：mock data 與使用者輸入都用同一種形狀，畫面依目前語言取值。 */
+export interface L10n {
+  zh: string;
+  en: string;
+}
+
+export type RoleId = 'techlead' | 'engineer' | 'vendorpm' | 'finance' | 'hr' | 'business' | 'auditor' | 'admin';
+/** 三種狀態。畫面上一律「顏色＋形狀＋文字」一起出現，不只靠顏色。 */
+export type Health = 'ok' | 'warn' | 'crit';
+/** 領域，同時是 3D 總行的樓層。 */
+export type Domain = 'sales' | 'finance' | 'hr' | 'procurement' | 'it';
+export type SystemId = 'erp-gl' | 'erp-ap' | 'erp-po' | 'crm' | 'hr' | 'wf' | 'esb' | 'dw' | 'iam';
+export type VendorId = 'v-erp' | 'v-crm' | 'v-hr' | 'v-wf';
+export type Priority = 'P1' | 'P2' | 'P3';
+export type Risk = 'low' | 'med' | 'high';
+
+// ── 系統、廠商、人
+
+export interface System {
+  id: SystemId;
+  code: string;
+  name: L10n;
+  /** 給財務、人資、業務看的稱呼，不帶技術名詞。 */
+  plain: L10n;
+  domain: Domain;
+  /** 哪些單位每天在用。這個系統停了，這些樓層會受影響。 */
+  usedBy: Domain[];
+  vendorId: VendorId | null;
+  ownerId: string;
+  version: string;
+  hosting: L10n;
+  since: number;
+  note: L10n;
+}
+
+export interface SlaTarget {
+  respondMin: number;
+  resolveHr: number;
+}
+
+export interface Vendor {
+  id: VendorId;
+  name: L10n;
+  product: L10n;
+  pmId: string;
+  contractNo: string;
+  contractStart: string;
+  contractEnd: string;
+  monthlyFee: number;
+  sla: Record<Priority, SlaTarget>;
+  note: L10n;
+}
+
+export type SkillKey = 'erpFin' | 'erpPo' | 'crm' | 'hr' | 'wf' | 'esb' | 'sql' | 'iam';
+export type PersonKind = 'internal' | 'vendor' | 'business';
+
+export interface OneOnOne {
+  id: string;
+  date: string;
+  topic: L10n;
+  notes: L10n;
+  actions: L10n;
+}
+
+export interface Person {
+  id: string;
+  name: L10n;
+  title: L10n;
+  kind: PersonKind;
+  dept: L10n;
+  vendorId?: VendorId;
+  scope: L10n;
+  /** 兩週內可以排工作的天數。業務單位窗口不排工程任務，所以是 0。 */
+  capacityDays: number;
+  /** 0 不會、1 看得懂、2 能獨立處理、3 能教人。 */
+  skills: Partial<Record<SkillKey, number>>;
+  active: boolean;
+  oneOnOnes: OneOnOne[];
+}
+
+export type TaskStatus = 'todo' | 'doing' | 'review' | 'done';
+export interface Task {
+  id: string;
+  title: L10n;
+  assigneeId: string | null;
+  systemId: SystemId;
+  ifaceId?: string;
+  effortDays: number;
+  status: TaskStatus;
+  due: string;
+}
+
+export interface Review {
+  id: string;
+  title: L10n;
+  authorId: string;
+  reviewerId: string;
+  systemId: SystemId;
+  lines: number;
+  openedAt: string;
+  status: 'open' | 'approved' | 'changes';
+}
+
+// ── 介面
+
+export type Protocol = 'REST' | 'SOAP' | 'SFTP' | 'JDBC' | 'MQ' | 'LDAP' | 'SAML';
+export type Via = 'esb' | 'file' | 'direct';
+
+export interface FieldMap {
+  from: string;
+  to: string;
+  rule: L10n;
+}
+
+export interface Schedule {
+  kind: 'realtime' | 'interval' | 'daily' | 'monthly';
+  everyMin?: number;
+  /** HH:mm，台北時間。 */
+  at?: string;
+  /** 一天裡哪幾個小時有資料在跑（0–23）。3D 的時間軸與批次表都讀這個。 */
+  hours: number[];
+}
+
+export interface Iface {
+  id: string;
+  name: L10n;
+  /** 給非技術角色看的說法。 */
+  plain: L10n;
+  source: SystemId;
+  target: SystemId;
+  /** 所屬系統：由這個系統的團隊（或廠商）負責實作與維護。 */
+  systemId: SystemId;
+  /** 負責的廠商；內部自己維護的是 null。必須等於所屬系統的廠商（有測試守著）。 */
+  vendorId: VendorId | null;
+  ownerId: string;
+  domain: Domain;
+  via: Via;
+  protocol: Protocol;
+  schedule: Schedule;
+  /** 資料契約版本。 */
+  contract: string;
+  /** 平常一次跑幾筆。 */
+  volume: number;
+  fields: FieldMap[];
+  retry: { max: number; backoff: L10n };
+  dlq: boolean;
+  compensation: L10n;
+  reconIds: string[];
+  /** 這條介面要等哪些介面先成功。 */
+  dependsOn: string[];
+  apiId?: string;
+  runbookId?: string;
+  flaky?: boolean;
+}
+
+export type RunStatus = 'ok' | 'retried' | 'late' | 'fail' | 'held';
+export interface Run {
+  id: string;
+  ifaceId: string;
+  at: string;
+  status: RunStatus;
+  records: number;
+  failed: number;
+  attempts: number;
+  seconds: number;
+  http?: number;
+  note?: L10n;
+}
+
+export interface DlqItem {
+  id: string;
+  ifaceId: string;
+  runId: string;
+  key: string;
+  kind: L10n;
+  detail: L10n;
+  status: 'queued' | 'resent';
+}
+
+export interface ApiEntry {
+  id: string;
+  name: L10n;
+  systemId: SystemId;
+  style: 'REST' | 'SOAP';
+  version: string;
+  status: 'active' | 'deprecated' | 'sunset';
+  sunset?: string;
+  successor?: string;
+  note: L10n;
+}
+
+// ── 對帳
+
+export interface QueryPlan {
+  before: string;
+  after: string;
+  ddl: string;
+  note: L10n;
+}
+
+export interface ReconRule {
+  id: string;
+  name: L10n;
+  plain: L10n;
+  kind: 'count' | 'amount' | 'checksum';
+  left: SystemId;
+  right: SystemId;
+  ifaceIds: string[];
+  schedule: L10n;
+  ownerId: string;
+  /** 受影響的報表，用財務看得懂的名稱。 */
+  report: L10n;
+  sql: string;
+  /** 左側的總數（筆數、金額或區塊數）。右側由左側扣掉未結差異算出，不另外存。 */
+  baseLeft: number;
+  tolerance: L10n;
+  lastRunAt: string;
+  plan?: QueryPlan;
+}
+
+export interface ReconDiff {
+  id: string;
+  ruleId: string;
+  key: string;
+  left: L10n;
+  right: L10n;
+  /** 金額差（左減右）。筆數與 checksum 規則填 0。 */
+  amount: number;
+  reason: L10n;
+  status: 'open' | 'resolved';
+  foundAt: string;
+  resolvedBy?: string;
+}
+
+// ── 廠商管理
+
+export interface Ticket {
+  id: string;
+  vendorId: VendorId;
+  systemId: SystemId;
+  title: L10n;
+  priority: Priority;
+  openedAt: string;
+  respondedAt?: string;
+  resolvedAt?: string;
+  ifaceId?: string;
+  incidentId?: string;
+}
+
+export interface Deliverable {
+  id: string;
+  vendorId: VendorId;
+  title: L10n;
+  due: string;
+  deliveredAt?: string;
+  acceptance: 'pending' | 'accepted' | 'rejected';
+  /** 被驗收退件的次數。 */
+  rejects: number;
+  rejectReason?: L10n;
+}
+
+export interface Milestone {
+  id: string;
+  vendorId: VendorId;
+  title: L10n;
+  date: string;
+  amount: number;
+  status: 'paid' | 'accepted' | 'due' | 'late' | 'planned';
+}
+
+export type Party = 'internal' | 'vendor' | 'business' | 'audit';
+export interface RaciRow {
+  id: string;
+  vendorId: VendorId;
+  activity: L10n;
+  /** 每一方填 R、A、C、I 的組合，或空字串。 */
+  cells: Record<Party, string>;
+  disputed?: L10n;
+}
+
+export type CrStage = 'submitted' | 'assessed' | 'approved' | 'rejected' | 'done';
+export interface ChangeRequest {
+  id: string;
+  vendorId: VendorId;
+  title: L10n;
+  reason: L10n;
+  raisedBy: string;
+  raisedAt: string;
+  cost: number;
+  days: number;
+  stage: CrStage;
+  decisionId?: string;
+}
+
+// ── 需求與決策
+
+export type DemandStage = 'submitted' | 'assessing' | 'options' | 'decided' | 'scheduled' | 'declined';
+export interface DemandOption {
+  key: string;
+  title: L10n;
+  cost: number;
+  weeks: number;
+  risk: Risk;
+  note: L10n;
+}
+
+export interface Demand {
+  id: string;
+  title: L10n;
+  dept: Domain;
+  requesterId: string;
+  createdAt: string;
+  stage: DemandStage;
+  systemIds: SystemId[];
+  summary: L10n;
+  options: DemandOption[];
+  decisionId?: string;
+  roadmapId?: string;
+  branchId?: string;
+}
+
+export interface Decision {
+  id: string;
+  title: L10n;
+  date: string;
+  decidedBy: string;
+  chosen: L10n;
+  why: L10n;
+  demandId?: string;
+  crId?: string;
+  incidentId?: string;
+}
+
+// ── 事件與變更
+
+export type IncidentStage = 'triggered' | 'assigned' | 'mitigating' | 'recovered' | 'review' | 'closed';
+export interface IncidentAction {
+  text: L10n;
+  ownerId: string;
+  due: string;
+  done: boolean;
+}
+
+export interface Incident {
+  id: string;
+  title: L10n;
+  severity: 'S1' | 'S2' | 'S3';
+  systemId: SystemId;
+  ifaceId?: string;
+  stage: IncidentStage;
+  ownerId: string | null;
+  startedAt: string;
+  recoveredAt?: string;
+  impact: L10n;
+  rootCause: L10n;
+  fix: L10n;
+  actions: IncidentAction[];
+  timeline: { stage: IncidentStage; at: string; by: string }[];
+  adrId?: string;
+  roadmapId?: string;
+}
+
+export interface GateItem {
+  id: string;
+  text: L10n;
+  checkedBy?: string;
+}
+
+export interface Change {
+  id: string;
+  title: L10n;
+  systemId: SystemId;
+  date: string;
+  window: string;
+  kind: 'standard' | 'normal' | 'emergency';
+  /** 做了就退不回去（例如刪資料、改主鍵、停用舊系統）。要逐項人工把關才能核准。 */
+  irreversible: boolean;
+  status: 'requested' | 'approved' | 'done' | 'rejected';
+  requesterId: string;
+  approvedBy?: string;
+  gates: GateItem[];
+  rollback: L10n;
+}
+
+// ── 規範、文件、路徑圖
+
+export interface Adr {
+  id: string;
+  title: L10n;
+  status: 'proposed' | 'accepted' | 'superseded';
+  date: string;
+  authorId: string;
+  context: L10n;
+  decision: L10n;
+  consequences: L10n;
+  reviewed: string;
+  incidentId?: string;
+}
+
+export type DocKind = 'standard' | 'api' | 'errors' | 'runbook' | 'process' | 'onboarding';
+export interface Doc {
+  id: string;
+  title: L10n;
+  kind: DocKind;
+  ownerId: string;
+  reviewed: string;
+  /** 多久要重新檢視一次。超過就算過期。 */
+  cycleDays: number;
+  systemId?: SystemId;
+  outline: L10n[];
+}
+
+export interface RoadmapItem {
+  id: string;
+  title: L10n;
+  /** 財務版的標題：講的是哪個作業會變怎樣。 */
+  plain: L10n;
+  /** YYYY-MM。 */
+  start: string;
+  end: string;
+  dependsOn: string[];
+  budget: number;
+  internalPm: number;
+  vendorPm: number;
+  risk: Risk;
+  riskNote: L10n;
+  systemIds: SystemId[];
+  /** 財務版的說明：對業務單位的影響。 */
+  value: L10n;
+  /** 工程版的說明：做法與相依。 */
+  tech: L10n;
+  status: 'committed' | 'planned' | 'proposed';
+  /** 這個項目從哪裡來（事件、需求或決策的編號）。 */
+  sourceId?: string;
+}
+
+export interface Branch {
+  id: string;
+  name: L10n;
+  region: L10n;
+  staff: number;
+  /** 這個據點在簽呈系統裡等待核准的件數。 */
+  pendingApprovals: number;
+}
+
+// ── 稽核
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  actor: L10n;
+  role: RoleId | 'system';
+  action: L10n;
+  target: string;
+  detail: L10n;
+}
+
+// ── 劇本與整體狀態
+
+export type ScenarioId = 'A' | 'B' | 'C';
+export interface ScenarioState {
+  id: ScenarioId;
+  /** 已經走完幾步。0 代表剛啟動、還沒發生任何事。 */
+  step: number;
+}
+
+export interface AppState {
+  version: number;
+  seed: number;
+  systems: System[];
+  vendors: Vendor[];
+  people: Person[];
+  tasks: Task[];
+  reviews: Review[];
+  ifaces: Iface[];
+  runs: Run[];
+  dlq: DlqItem[];
+  apis: ApiEntry[];
+  reconRules: ReconRule[];
+  reconDiffs: ReconDiff[];
+  tickets: Ticket[];
+  deliverables: Deliverable[];
+  milestones: Milestone[];
+  raci: RaciRow[];
+  changeRequests: ChangeRequest[];
+  demands: Demand[];
+  decisions: Decision[];
+  incidents: Incident[];
+  changes: Change[];
+  adrs: Adr[];
+  docs: Doc[];
+  roadmap: RoadmapItem[];
+  branches: Branch[];
+  audit: AuditEntry[];
+  rbac: Record<RoleId, string[]>;
+  scenario: ScenarioState | null;
+  /** 在 3D 或架構圖上手動注入故障的系統。 */
+  faults: SystemId[];
+  counters: Record<string, number>;
+}
+
+export interface Prefs {
+  role: RoleId;
+  lang: Lang;
+  lowFx: boolean;
+  /** 用「委外廠商 PM」登入時，代表哪一家廠商。 */
+  vendorId: VendorId;
+}
