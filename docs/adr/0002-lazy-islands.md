@@ -5,14 +5,14 @@
 
 ## 背景
 
-需要兩個大的函式庫：`@xyflow/react`（連同 React，gzip 約 156 kB）與 `three`（約 143 kB）。
+需要兩個大的函式庫：`@xyflow/react`（連同 React，gzip 約 156 kB）與 `three`（連同一道後製，約 157 kB）。
 大部分的頁面是表格，用不到它們。不懂技術的主管用公司的舊筆電開，首屏要快。
 
 ## 決定
 
 - 介面本身是原生 TypeScript：一個會自動跳脫的 `html` 樣板（`src/ui/dom.ts`），資料變了就重畫那一塊。沒有前端框架。
 - 流程圖是一座 React 島（`src/flow/FlowIsland.tsx`）。頁面交給它節點與連線的純資料，拿回 `{ update, destroy }`，不需要知道 React 存在。
-- 3D 場景是另一座島（`src/three/twin.ts`），介面一樣是 `{ update, dispose }`。
+- 3D 場景是另一座島（`src/three/twin.ts`，模型在 `src/three/model.ts`），介面一樣是 `{ update, dispose }`。畫法見 ADR 0006。
 - 兩座島都用動態 `import()` 載入，各自一個 chunk；每一頁也各自一個 chunk。
 
 ## 代價

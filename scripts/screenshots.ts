@@ -6,6 +6,8 @@ import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const base = process.argv[2] ?? 'http://localhost:4173/';
+// 第二個參數可以只拍檔名開頭符合的那幾張，例如 bun scripts/screenshots.ts http://localhost:4173/ 22
+const only = process.argv[3];
 const OUT = 'docs/screenshots';
 
 interface Shot {
@@ -14,12 +16,15 @@ interface Shot {
   role?: string;
   lang?: 'zh' | 'en';
   width?: number;
+  /** 3D 的時間軸要拉到幾點。 */
+  hour?: number;
 }
 
 const SHOTS: Shot[] = [
   { file: '01-overview-techlead', hash: '/overview' },
   { file: '02-overview-finance', hash: '/overview', role: 'finance' },
   { file: '16-twin-impact', hash: '/overview?focus=hr&what=if' },
+  { file: '22-twin-night', hash: '/overview?focus=erp-gl', hour: 23 },
   { file: '07-integration', hash: '/integration' },
   { file: '08-integration-iface', hash: '/integration?iface=INT-014' },
   { file: '09-integration-impact', hash: '/integration?sys=hr&impact=hr' },
@@ -43,6 +48,7 @@ const SHOTS: Shot[] = [
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome' });
 for (const shot of SHOTS) {
+  if (only && !shot.file.startsWith(only)) continue;
   const context = await browser.newContext({ viewport: { width: shot.width ?? 1280, height: 800 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   await page.goto(`${base}#/overview`);
@@ -56,7 +62,13 @@ for (const shot of SHOTS) {
   if (shot.hash.startsWith('/integration') || shot.hash.startsWith('/demands')) await page.waitForSelector('.react-flow__node');
   // 3D 場景也是延遲載入的，等畫布出現
   if (shot.hash.startsWith('/overview')) await page.waitForSelector('#twin-stage canvas, #twin-fallback', { timeout: 15000 });
-  await page.waitForTimeout(400);
+  if (shot.hour !== undefined) {
+    await page.locator('#twin-hour').fill(String(shot.hour));
+    // 拉時間軸會把頁面捲下去，拍之前捲回最上面
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+  // 3D 的光線漸變要半秒多
+  await page.waitForTimeout(shot.hash.startsWith('/overview') ? 1200 : 400);
   await page.screenshot({ path: `${OUT}/${shot.file}.png`, fullPage: true });
   console.log(`${OUT}/${shot.file}.png`);
   await context.close();

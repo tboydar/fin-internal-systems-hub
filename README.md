@@ -93,6 +93,7 @@ bun run check:names                     # 查假名稱有沒有跟真實公司�
 - [0003 假資料只有一個來源，畫面上的數字都是算出來的](docs/adr/0003-mock-data-consistency.md)
 - [0004 3D 與 2D 讀同一份狀態](docs/adr/0004-shared-state-2d-3d.md)
 - [0005 雙語文字就地寫成一對](docs/adr/0005-inline-bilingual-text.md)
+- [0006 3D 總行畫成剖面白模](docs/adr/0006-twin-rendering.md)
 
 分支、commit 與改資料的規則在 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
@@ -109,7 +110,7 @@ bun run check:names                     # 查假名稱有沒有跟真實公司�
     ├── mock/                假資料，固定種子
     ├── ui/                  外殼、樣板與事件工具、圖示、共用元件、延遲載入
     ├── flow/                流程圖（xyflow 的 React 島）
-    ├── three/               3D 場景
+    ├── three/               3D 場景：model.ts 是模型，twin.ts 是光線、鏡頭、標籤與小紙片
     ├── pages/               十個頁面，每頁一個 chunk
     └── styles/main.css      設計代碼與樣式
 ```
@@ -135,6 +136,8 @@ curl -s https://tboydar.github.io/fin-internal-systems-hub/ | grep app-version
 
 - 權限矩陣存在瀏覽器裡，是用來說明「誰該看到什麼」，不是安全機制。
 - 3D 的時間軸拉到哪個小時沒有存下來，換頁再回來會回到「現在」。
+- 3D 的環境遮蔽在畫面更新太慢時會自己關掉（見 ADR 0006）。那個門檻是估的，沒有在低階的實體筆電上量過。
+- 手機寬度（390）上，機櫃標籤要錯開成四排，會蓋住一部分樓層。
 - 各角色的說法只涵蓋寫了規則的情況；其餘用通用的句子。
 - 英文版是作者自己寫的，沒有請母語人士校對。
 - commit `ebfa687` 單獨拿出來型別檢查不會過（外殼檔少一行，下一個 commit 補上）。
