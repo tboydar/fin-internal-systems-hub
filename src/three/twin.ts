@@ -164,7 +164,7 @@ function mix(a: Mood, b: Mood, t: number, out: Mood): void {
   out.table = lerp(a.table, b.table, t);
 }
 
-/** 沒有顯示卡、靠 CPU 算圖的環境（遠端桌面、CI）。這種環境自動省掉最花力氣的環境遮蔽。 */
+/** 沒有顯示卡、靠 CPU 算圖的環境（遠端桌面、CI）。這種環境直接當成勾了「降低特效」。 */
 function isSoftwareGl(renderer: WebGLRenderer): boolean {
   const gl = renderer.getContext();
   const info = gl.getExtension('WEBGL_debug_renderer_info');
@@ -178,9 +178,9 @@ function isSoftwareGl(renderer: WebGLRenderer): boolean {
  */
 export function createTwin(opts: TwinOptions): TwinHandle {
   const { container, labelLayer } = opts;
-  let lowFx = opts.lowFx;
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
   const software = isSoftwareGl(renderer);
+  let lowFx = opts.lowFx || software;
   renderer.shadowMap.type = PCFShadowMap;
   // 場景幾乎不動，陰影只在光線或狀態改變時重算
   renderer.shadowMap.autoUpdate = false;
@@ -404,7 +404,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
   let strained = false;
   let sampled = 0;
   let sampledTime = 0;
-  const fancy = () => !lowFx && !software && !strained;
+  const fancy = () => !lowFx && !strained;
 
   // ── 標籤：疊在畫面上的 HTML，位置由 3D 座標投影而來。機櫃的標籤是按鈕，可以用鍵盤選取
   let labelEls = new Map<string, HTMLElement>();
@@ -487,7 +487,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
   function resize(): void {
     const w = Math.max(container.clientWidth, 1);
     const h = Math.max(container.clientHeight, 1);
-    const ratio = lowFx || software ? 1 : Math.min(window.devicePixelRatio, 2);
+    const ratio = lowFx ? 1 : Math.min(window.devicePixelRatio, 2);
     renderer.setPixelRatio(ratio);
     renderer.setSize(w, h, false);
     renderer.domElement.style.width = '100%';
@@ -660,7 +660,7 @@ export function createTwin(opts: TwinOptions): TwinHandle {
     update,
     setLabels,
     setLowFx(low) {
-      lowFx = low;
+      lowFx = low || software;
       applyFx();
       resize();
       sync();
