@@ -3,7 +3,7 @@ import { menu, open, ROLES, signInAs } from './helpers';
 
 // 冒煙測試：每個角色登入後，選單上的每一頁都開得起來；沒權限的頁面會看到說明。
 
-const ALL_PAGES = ['/overview', '/integration', '/rbac', '/about'];
+const ALL_PAGES = ['/overview', '/integration', '/consistency', '/vendors', '/incidents', '/rbac', '/about'];
 
 for (const role of ROLES) {
   test(`${role}：選單上的每一頁都開得起來，而且沒有錯誤`, async ({ page }) => {
@@ -149,4 +149,142 @@ test('財務主管看不到整合架構，也不能注入故障', async ({ page 
   await signInAs(page, 'finance');
   await page.goto('#/integration');
   await expect(page.locator('#view .notice h1')).toHaveText('這個角色看不到這一頁');
+});
+
+test('總覽上的數字點進去，看到的列數就是那個數字', async ({ page }) => {
+  await open(page, '/overview');
+  const health = Number(await page.locator('[data-stat="health"]').getAttribute('data-count'));
+  await expect(page.locator('#pending-table tbody tr')).toHaveCount(Number(await page.locator('[data-stat="pending"]').getAttribute('data-count')));
+  await expect(page.locator('#sla-table tbody tr')).toHaveCount(Number(await page.locator('[data-stat="sla"]').getAttribute('data-count')));
+  // 月結倒數：日曆上到月結日為止的工作日列數（不含今天）
+  await page.click('[data-stat="month-end"]');
+  await expect(page.locator('#calendar')).toBeFocused();
+  const rows = page.locator('#calendar-table tbody tr');
+  await expect(rows).toHaveCount(8);
+  await expect(page.locator('#calendar-table tbody tr[data-workday="true"]')).toHaveCount(5);
+  await page.click('[data-stat="pending"]');
+  await expect(page.locator('#pending')).toBeFocused();
+  await page.click('[data-stat="health"]');
+  await expect(page.locator('#view[data-page="/integration"]')).toBeVisible();
+  await expect(page.locator('#iface-table tbody tr')).toHaveCount(health);
+});
+
+test('財務主管點「關帳日」會到日曆，不會跳到找不到的頁面', async ({ page }) => {
+  await open(page, '/overview');
+  await signInAs(page, 'finance');
+  await page.click('[data-stat="close"]');
+  await expect(page.locator('#view .notice')).toHaveCount(0);
+  await expect(page.locator('#calendar')).toBeFocused();
+  await expect(page.locator('#calendar-table')).toContainText('關帳日');
+  await expect(page.locator('#calendar-table')).not.toContainText('INT-');
+});
+
+test('資料一致性：技術角色看得到 SQL 與執行計畫；財務主管看不到 SQL', async ({ page }) => {
+  await open(page, '/consistency?rule=RC-05');
+  await expect(page.locator('#rule-detail')).toContainText('Seq Scan on voucher_line');
+  await expect(page.locator('#rule-detail')).toContainText('Index Scan using idx_voucher_line_ap_ref');
+  await signInAs(page, 'finance');
+  await page.goto('#/consistency?rule=RC-07');
+  await expect(page.locator('#rule-detail')).toContainText('台中分公司');
+  await expect(page.locator('#diff-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('#rule-detail pre')).toHaveCount(0);
+  await expect(page.locator('#view')).not.toContainText('SELECT');
+});
+
+test('不可逆的變更：把關清單沒勾完不能核准；落在凍結期的變更也不能', async ({ page }) => {
+  await open(page, '/incidents?chg=CHG-245');
+  const approve = page.locator('[data-act="approve"]');
+  await expect(approve).toHaveAttribute('aria-disabled', 'true');
+  for (const gate of ['rehearsal', 'signoff', 'abort']) await page.check(`#gate-${gate}`);
+  await expect(approve).not.toHaveAttribute('aria-disabled', 'true');
+  await approve.click();
+  await expect(page.locator('#change-detail')).toContainText('已核准');
+  await page.goto('#/incidents?chg=CHG-243');
+  await expect(page.locator('#change-detail')).toContainText('月結凍結');
+  await expect(page.locator('[data-act="approve"]')).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('劇本 A 從頭走到尾：每個角色看到各自的說法，最後事件結案', async ({ page }) => {
+  await open(page, '/overview');
+  await page.click('#scenario-start');
+  await expect(page.locator('#scenario-step')).toHaveText('0/8');
+
+  await page.click('#scenario-next');
+  await expect(page.locator('#demo-date')).toContainText('13:05');
+  await expect(page.locator('#statements')).toContainText('INT-014 人事→ERP 員工主檔同步，HTTP 504，重試 3/3，37 筆進 DLQ');
+  await page.click('#scenario-next');
+  await page.click('#scenario-next');
+  await page.click('#scenario-next');
+  await page.click('#scenario-next');
+  await expect(page.locator('#scenario-step')).toHaveText('5/8');
+  await expect(page.locator('#side-by-side')).toContainText('11 月薪資分錄會晚半天入帳，不影響 12/4 關帳');
+  await expect(page.locator('#side-by-side')).toContainText('37 位新進與異動同仁的成本中心還沒更新');
+
+  // 財務主管：沒有技術名詞
+  await signInAs(page, 'finance');
+  await expect(page.locator('#statements')).toContainText('11 月薪資分錄會晚半天入帳，不影響 12/4 關帳');
+  await expect(page.locator('#view')).not.toContainText('INT-');
+  await expect(page.locator('#view')).not.toContainText('DLQ');
+  // 人資主管：37 位，點進去是 37 列
+  await signInAs(page, 'hr');
+  await expect(page.locator('#statements')).toContainText('37 位新進與異動同仁的成本中心還沒更新');
+  await page.click('[data-fk="detail:INT-014"]');
+  await expect(page.locator('#detail-table tbody tr')).toHaveCount(37);
+
+  // 回到工程師：在整合架構頁按「重送 37 筆」，劇本跟著往前走
+  await signInAs(page, 'engineer');
+  await page.goto('#/integration?iface=INT-014');
+  await page.click('[data-act="resend"]');
+  await expect(page.locator('#scenario-step')).toHaveText('6/8');
+  await expect(page.locator('#toast')).toContainText('已重送 37 筆');
+  await page.goto('#/consistency?rule=RC-03');
+  await expect(page.locator('#diff-table')).toContainText('37 筆差異都已經處理完');
+
+  await page.click('#scenario-next');
+  await page.click('#scenario-next');
+  await expect(page.locator('#scenario-bar')).toContainText('已經走完');
+  await page.click('#scenario-look');
+  await expect(page.locator('#incident-detail')).toContainText('ADR-009');
+  await expect(page.locator('#incident-detail')).toContainText('RM-13');
+  await expect(page.locator('#incident-detail .stages li.is-done')).toHaveCount(6);
+  // 重新整理後還在
+  await page.reload();
+  await expect(page.locator('#scenario-step')).toHaveText('8/8');
+  await expect(page.locator('#incident-detail')).toContainText('ADR-009');
+});
+
+test('委外廠商 PM 只看得到自家；換一家廠商，內容跟著換', async ({ page }) => {
+  await open(page, '/overview');
+  await signInAs(page, 'vendorpm');
+  await expect(page.locator('#view[data-page="/vendors"]')).toBeVisible();
+  await expect(page.locator('#vendor-table')).toHaveCount(0);
+  await expect(page.locator('#vendor-panel h2')).toHaveText('槿川科技');
+  await expect(page.locator('#view')).not.toContainText('嶼衡資訊');
+  await expect(page.locator('#who')).toContainText('闕定寰');
+  await page.selectOption('#vendor-select', 'v-erp');
+  await expect(page.locator('#vendor-panel h2')).toHaveText('嶼衡資訊');
+  await expect(page.locator('#view')).not.toContainText('槿川科技');
+  await expect(page.locator('#who')).toContainText('晏柏諺');
+});
+
+test('廠商的 SLA 達成率後面跟著「幾張裡的幾張」，而且等於工單表裡的列數', async ({ page }) => {
+  await open(page, '/vendors?vendor=v-crm');
+  const note = await page.locator('#vendor-stats .stat').first().locator('.stat-n').innerText();
+  const [met, counted] = (note.match(/\d+/g) ?? []).map(Number);
+  expect(counted).toBeGreaterThan(10);
+  expect(met).toBeLessThan(counted);
+  const onTime = await page.locator('#ticket-table tbody tr:has(.mark.is-ok:has-text("準時"))').count();
+  expect(onTime).toBe(met);
+});
+
+test('核定變更請求要寫原因，核定後留下決策紀錄與稽核軌跡', async ({ page }) => {
+  await open(page, '/vendors?vendor=v-crm&tab=cr');
+  await page.click('[data-act="decide-cr"]');
+  await page.click('[data-verdict="approved"]');
+  await expect(page.locator('#toast')).toContainText('請寫原因');
+  await page.fill('#cr-why', '晚到會壓到 23:30 的批次，值得花這筆錢');
+  await page.click('[data-verdict="approved"]');
+  await expect(page.locator('#cr-table')).toContainText('DEC-110');
+  await page.goto('#/rbac');
+  await expect(page.locator('#audit')).toContainText('核定變更請求');
 });
