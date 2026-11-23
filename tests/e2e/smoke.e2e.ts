@@ -304,6 +304,49 @@ test('3D 與架構圖互跳；在 3D 注入故障，架構圖與總覽的數字�
   await expect(page.locator('#int-side')).toContainText('停止（模擬）');
 });
 
+test('微縮總行：九個機櫃的標籤各有引線、互不重疊；樓層標籤帶著狀態；three 沒有丟警告', async ({ page }) => {
+  const warnings: string[] = [];
+  page.on('console', (message) => {
+    if (['warning', 'error'].includes(message.type()) && message.text().includes('THREE')) warnings.push(message.text());
+  });
+  await page.goto('#/overview');
+  await expect(page.locator('#twin-stage canvas')).toBeVisible();
+  const labels = page.locator('#twin-labels button.twin-label');
+  await expect(labels).toHaveCount(9);
+  await expect(page.locator('#twin-labels .twin-stem')).toHaveCount(9);
+  await expect(page.locator('#twin-labels .twin-label.is-floor[data-health]')).toHaveCount(5);
+  await expect(page.locator('#twin-key .mark')).toHaveCount(3);
+  const boxes = await labels.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })),
+  );
+  for (let a = 0; a < boxes.length; a++) {
+    for (let b = a + 1; b < boxes.length; b++) {
+      const apart = boxes[a].right <= boxes[b].left || boxes[b].right <= boxes[a].left || boxes[a].bottom <= boxes[b].top || boxes[b].bottom <= boxes[a].top;
+      expect(apart, `第 ${a + 1} 與第 ${b + 1} 個機櫃標籤疊在一起`).toBe(true);
+    }
+  }
+  expect(warnings).toEqual([]);
+});
+
+test('微縮總行：拖曳會轉動模型，按「重設視角」回到原位', async ({ page }) => {
+  await page.goto('#/overview');
+  const canvas = page.locator('#twin-stage canvas');
+  await expect(canvas).toBeVisible();
+  const label = page.locator('#twin-labels [data-system="hr"]');
+  const box = await canvas.boundingBox();
+  const before = await label.boundingBox();
+  if (!box || !before) throw new Error('畫布或標籤還沒出現');
+  // 從左上角的空白處往右拖，不會點到機櫃
+  await page.mouse.move(box.x + 30, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 190, box.y + 40, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs(((await label.boundingBox())?.x ?? before.x) - before.x)).toBeGreaterThan(3);
+  await expect(page).toHaveURL(/#\/overview$/);
+  await page.click('#twin-reset');
+  await expect.poll(async () => Math.abs(((await label.boundingBox())?.x ?? 0) - before.x)).toBeLessThan(1);
+});
+
 test('時間軸重播月結日：拉到 23 點，清單換成夜間批次', async ({ page }) => {
   await open(page, '/overview');
   await expect(page.locator('#twin-flows')).toContainText('INT-014');
