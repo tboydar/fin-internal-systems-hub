@@ -41,11 +41,7 @@ export function approvalBlock(change: Change): L10n | null {
     );
   }
   const unchecked = change.gates.filter((g) => !g.checkedBy).length;
-  if (change.irreversible && unchecked)
-    return L(
-      `不可逆變更：把關清單還有 ${unchecked} 項沒勾`,
-      `Irreversible change: ${unchecked} gate ${unchecked === 1 ? 'item is' : 'items are'} still unchecked`,
-    );
+  if (unchecked) return L(`把關清單還有 ${unchecked} 項沒勾`, `${unchecked} gate ${unchecked === 1 ? 'item is' : 'items are'} still unchecked`);
   return null;
 }
 
@@ -145,9 +141,19 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
           ],
         ])}
         ${
-          change.irreversible
+          change.gates.length
             ? html`<h3>${T('人工把關清單', 'Manual gate checklist')}</h3>
-              <p>${T('這個變更做了就退不回去。五項都要有人勾選並具名，才能核准。', 'This change cannot be undone. All five items need a named check before it can be approved.')}</p>
+              <p>${
+                change.irreversible
+                  ? T(
+                      '這個變更做了就退不回去。每一項都要有人勾選並具名，才能核准。',
+                      'This change cannot be undone. Every item needs a named check before it can be approved.',
+                    )
+                  : T(
+                      '這個變更影響範圍大。每一項都要有人勾選並具名，才能核准。',
+                      'This change has a wide impact. Every item needs a named check before it can be approved.',
+                    )
+              }</p>
               <ul class="gates">${change.gates.map(
                 (g) =>
                   html`<li><label><input type="checkbox" data-gate="${g.id}" data-chg="${change.id}" id="gate-${g.id}" ${g.checkedBy ? raw('checked') : ''} ${

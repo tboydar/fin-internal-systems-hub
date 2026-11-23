@@ -1,6 +1,7 @@
 import { at, TODAY } from './date';
 import { L } from './i18n';
 import { addRun, logAs, moveIncident, person, resendDlq, resolveDiffs } from './mutations';
+import { SCENARIO_B, SCENARIO_C } from './scenariosBC';
 import { store } from './store';
 import type { AppState, DlqItem, L10n, ScenarioId } from './types';
 
@@ -361,7 +362,7 @@ const SCENARIO_A: ScenarioDef = {
   ],
 };
 
-export const SCENARIOS: Partial<Record<ScenarioId, ScenarioDef>> = { A: SCENARIO_A };
+export const SCENARIOS: Record<ScenarioId, ScenarioDef> = { A: SCENARIO_A, B: SCENARIO_B, C: SCENARIO_C };
 
 export interface ScenarioStatus {
   def: ScenarioDef;
@@ -390,7 +391,6 @@ export function scenarioStatus(state: AppState): ScenarioStatus | null {
 
 /** 啟動劇本。資料會先回到初始狀態（權限矩陣保留），劇本才有固定的起點。 */
 export function startScenario(id: ScenarioId): void {
-  if (!SCENARIOS[id]) return;
   const rbac = structuredClone(store.state.rbac);
   store.reset();
   store.update((s) => {

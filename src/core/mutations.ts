@@ -37,6 +37,12 @@ export function roleActor(role: RoleId, name: L10n = ROLE_NAME[role]): { name: L
   return { name, role };
 }
 
+/** 下一個流水號：現有編號裡最大的那個加一。例如 nextId(draft.decisions, 'DEC-') → DEC-110。 */
+export function nextId(list: { id: string }[], prefix: string): string {
+  const max = Math.max(0, ...list.filter((x) => x.id.startsWith(prefix)).map((x) => Number(x.id.slice(prefix.length)) || 0));
+  return `${prefix}${max + 1}`;
+}
+
 /** 加一筆執行紀錄。 */
 export function addRun(draft: AppState, run: Omit<Run, 'id'>): Run {
   const full: Run = { id: `${run.ifaceId}-${run.at.slice(0, 16).replace(/[-T:]/g, '')}`, ...run };

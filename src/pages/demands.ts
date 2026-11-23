@@ -2,6 +2,7 @@ import { audit, can, persona } from '../core/auth';
 import { TODAY } from '../core/date';
 import { DOMAIN_NAME } from '../core/derive';
 import { L, T, tx } from '../core/i18n';
+import { nextId } from '../core/mutations';
 import { href, type Route, setQuery } from '../core/router';
 import { store } from '../core/store';
 import type { AppState, Decision, Demand, DemandOption, DemandStage, Domain, L10n, Risk } from '../core/types';
@@ -255,7 +256,7 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
             let id = '';
             store.update((s) => {
               const dept = scope()?.[0] ?? 'finance';
-              id = `REQ-${341 + s.demands.filter((d) => Number(d.id.slice(4)) >= 341).length}`;
+              id = nextId(s.demands, 'REQ-');
               s.demands.unshift({
                 id,
                 title: { zh: title, en: title },
@@ -305,7 +306,7 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
             store.update((s) => {
               const target = s.demands.find((d) => d.id === demand.id);
               if (!target) return;
-              const id = `DEC-${120 + s.decisions.filter((d) => Number(d.id.slice(4)) >= 120).length}`;
+              const id = nextId(s.decisions, 'DEC-');
               s.decisions.push({
                 id,
                 title: target.title,

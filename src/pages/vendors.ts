@@ -2,6 +2,7 @@ import { audit, persona, vendorScope } from '../core/auth';
 import { dayOf, fmtDay, fmtStamp, hoursBetween, TODAY, workdaysBetween } from '../core/date';
 import { slaRisk } from '../core/derive';
 import { L, T, tx } from '../core/i18n';
+import { nextId } from '../core/mutations';
 import { fmtHoursText } from '../core/narrative';
 import { href, type Route, setQuery } from '../core/router';
 import { advanceIf } from '../core/scenario';
@@ -513,7 +514,7 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
             store.update((s) => {
               const cr = s.changeRequests.find((c) => c.id === id);
               if (!cr) return;
-              const decisionId = `DEC-${110 + s.decisions.filter((d) => Number(d.id.slice(4)) >= 110).length}`;
+              const decisionId = nextId(s.decisions, 'DEC-');
               cr.stage = verdict;
               cr.decisionId = decisionId;
               s.decisions.push({

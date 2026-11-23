@@ -221,6 +221,8 @@ export interface ReconRule {
   tolerance: L10n;
   lastRunAt: string;
   plan?: QueryPlan;
+  /** 兩邊不是既有的九個系統時（例如新舊系統並行），另外給名稱。 */
+  sideNames?: [L10n, L10n];
 }
 
 export interface ReconDiff {

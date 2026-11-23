@@ -34,6 +34,7 @@ function keyLabel(state: AppState, key: string): string {
 
 export function mount(root: HTMLElement, first: Route): PageHandle {
   let route = first;
+  const side = (state: AppState, rule: ReconRule, i: 0 | 1) => (rule.sideNames ? tx(rule.sideNames[i]) : systemName(state, i === 0 ? rule.left : rule.right));
 
   function detail(state: AppState, rule: ReconRule, tech: boolean): Safe {
     const totals = ruleTotals(state, rule);
@@ -48,8 +49,8 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
       rows: totals.diffs,
       cols: [
         { head: tech ? T('鍵值', 'Key') : T('哪一筆', 'Which one'), cell: (d) => html`<span class="num">${keyLabel(state, d.key)}</span>`, cls: 'nowrap' },
-        { head: systemName(state, rule.left), cell: (d) => tx(d.left) },
-        { head: systemName(state, rule.right), cell: (d) => tx(d.right) },
+        { head: side(state, rule, 0), cell: (d) => tx(d.left) },
+        { head: side(state, rule, 1), cell: (d) => tx(d.right) },
         ...(rule.kind === 'amount' ? [{ head: T('差額', 'Difference'), cell: (d: ReconDiff) => nt(d.amount), cls: 'num' as const }] : []),
         { head: T('原因', 'Reason'), cell: (d) => tx(d.reason), cls: 'wide' },
         { head: T('發現時間', 'Found'), cell: (d) => html`<span class="num">${fmtStamp(d.foundAt)}</span>`, cls: 'nowrap' },
@@ -65,11 +66,11 @@ export function mount(root: HTMLElement, first: Route): PageHandle {
       tech ? `${rule.id} ${tx(rule.name)}` : tx(rule.plain),
       html`<div class="panel-body stack" id="rule-detail">
         ${facts([
-          [T('比對什麼', 'What is compared'), tech ? tx(rule.plain) : `${systemName(state, rule.left)} ${T('對', 'vs')} ${systemName(state, rule.right)}`],
+          [T('比對什麼', 'What is compared'), tech ? tx(rule.plain) : `${side(state, rule, 0)} ${T('對', 'vs')} ${side(state, rule, 1)}`],
           [T('受影響的報表', 'Affected reports'), tx(rule.report)],
           [
             T('兩邊的總數', 'Totals'),
-            html`<span class="num">${systemName(state, rule.left)} ${total(rule, totals.left)}${T('；', '; ')}${systemName(state, rule.right)} ${total(rule, totals.right)}</span>`,
+            html`<span class="num">${side(state, rule, 0)} ${total(rule, totals.left)}${T('；', '; ')}${side(state, rule, 1)} ${total(rule, totals.right)}</span>`,
           ],
           [T('容許差異', 'Tolerance'), tx(rule.tolerance)],
           [T('多久比一次', 'Schedule'), `${tx(rule.schedule)}${T('；上次 ', '; last run ')}${fmtStamp(rule.lastRunAt)}`],

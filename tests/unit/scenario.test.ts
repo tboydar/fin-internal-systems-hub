@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { openDiffs, pendingFor } from '../../src/core/derive';
+import { freezeOn, openDiffs, pendingFor, ruleTotals } from '../../src/core/derive';
 import { queued } from '../../src/core/mutations';
 import { sayAbout, sideBySide, statementsFor } from '../../src/core/narrative';
 import { advanceIf, endScenario, nextStep, SCENARIOS, scenarioStatus, startScenario } from '../../src/core/scenario';
 import { ifaceStatus, ifacesByHealth, impactOf } from '../../src/core/selectors';
-import { ticketSla, vendorMetrics } from '../../src/core/sla';
+import { penaltyOf, ticketSla, vendorMetrics } from '../../src/core/sla';
 import { store } from '../../src/core/store';
 import { buildInitialState } from '../../src/mock';
 
@@ -172,7 +172,7 @@ describe('劇本 A', () => {
   });
 
   test('每一步都指向一個看結果的頁面；結束劇本後變化留著', () => {
-    for (const step of SCENARIOS.A?.steps ?? []) {
+    for (const step of Object.values(SCENARIOS).flatMap((def) => def.steps)) {
       expect(step.look.path).toMatch(/^\/[a-z]+$/);
       expect(step.time).toMatch(/^\d\d:\d\d$/);
     }
@@ -206,5 +206,81 @@ describe('如果它停了', () => {
     expect(ids).toContain('INT-021');
     expect(ids).not.toContain('INT-032');
     expect(ids).not.toContain('INT-051');
+  });
+});
+
+describe('劇本 B：CRM 廠商交付延遲又被驗收退件', () => {
+  test('交付 → 退件 → 違約 → 責任爭議 → 變更請求 → 決策紀錄', () => {
+    startScenario('B');
+    const before = { decisions: store.state.decisions.length, raci: store.state.raci.length };
+    expect(vendorMetrics(store.state, 'v-crm').lateOpen.map((d) => d.id)).toEqual(['DL-415']);
+
+    steps(1);
+    let dl = store.state.deliverables.find((d) => d.id === 'DL-415')!;
+    expect([dl.deliveredAt, dl.acceptance]).toEqual(['2026-11-27', 'pending']);
+    expect(pendingFor(store.state, 'tl').acceptances.map((d) => d.id)).toEqual(['DL-415']);
+    // 交付了但是遲交：準時率的分母多一個，分子不變
+    expect(vendorMetrics(store.state, 'v-crm').onTimeRate).toBe(2 / 5);
+
+    // 在頁面上按「退件」，劇本也會往前走
+    expect(advanceIf('reject:DL-415')).toBe(true);
+    dl = store.state.deliverables.find((d) => d.id === 'DL-415')!;
+    expect([dl.acceptance, dl.rejects]).toEqual(['rejected', 1]);
+    expect(vendorMetrics(store.state, 'v-crm').rejectRate).toBe(3 / 5);
+
+    steps(2);
+    expect(store.state.raci.find((r) => r.id === 'v-crm:data')?.disputed).toBeDefined();
+    steps(1);
+    expect(store.state.changeRequests.find((c) => c.id === 'CR-035')?.stage).toBe('assessed');
+    expect(pendingFor(store.state, 'tl').crs.map((c) => c.id)).toContain('CR-035');
+
+    expect(advanceIf('decide:CR-035')).toBe(true);
+    const s = store.state;
+    expect(scenarioStatus(s)?.done).toBe(true);
+    expect(s.changeRequests.find((c) => c.id === 'CR-035')?.decisionId).toBe('DEC-110');
+    expect(s.decisions).toHaveLength(before.decisions + 1);
+    expect(s.decisions.find((d) => d.id === 'DEC-110')?.why.zh.length).toBeGreaterThan(20);
+    // 爭議解掉了，而且責任邊界多一列
+    expect(s.raci.find((r) => r.id === 'v-crm:data')?.disputed).toBeUndefined();
+    expect(s.raci).toHaveLength(before.raci + 1);
+    // 新的上線日不在凍結期裡，所以現在可以核准了
+    const release = s.changes.find((c) => c.id === 'CHG-243')!;
+    expect(freezeOn(release.date)).toBeUndefined();
+    // 別家廠商的數字沒有被動到
+    expect(penaltyOf(s, 'v-erp').rows).toEqual(penaltyOf(buildInitialState(), 'v-erp').rows);
+  });
+});
+
+describe('劇本 C：汰換舊簽呈系統', () => {
+  test('分階段切換 → 並行對帳 → 切換日與回滾條件 → 寫進路徑圖', () => {
+    startScenario('C');
+    steps(1);
+    const change = () => store.state.changes.find((c) => c.id === 'CHG-250')!;
+    expect(change().status).toBe('requested');
+    expect(freezeOn(change().date)).toBeUndefined();
+
+    steps(1);
+    const rule = () => store.state.reconRules.find((r) => r.id === 'RC-11')!;
+    expect(openDiffs(store.state, 'RC-11')).toHaveLength(3);
+    expect(ruleTotals(store.state, rule()).right).toBe(rule().baseLeft - 3);
+    expect(rule().sql).toContain('wf2.form');
+
+    steps(1);
+    expect(change().gates).toHaveLength(5);
+    expect(change().gates.filter((g) => !g.checkedBy)).toHaveLength(4);
+    expect(change().rollback.zh).toContain('切回');
+
+    steps(1);
+    expect(openDiffs(store.state, 'RC-11')).toHaveLength(0);
+
+    steps(1);
+    const s = store.state;
+    expect(scenarioStatus(s)?.done).toBe(true);
+    const item = s.roadmap.find((r) => r.id === 'RM-01')!;
+    expect(item.tech.zh).toContain('2027-03-13');
+    expect(item.tech.zh).toContain('RC-11');
+    expect(item.sourceId).toBe('CHG-250');
+    expect(s.decisions.find((d) => d.id === 'DEC-111')?.decidedBy).toBe('tl');
+    expect(s.roadmap).toHaveLength(12);
   });
 });
