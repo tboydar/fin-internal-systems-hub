@@ -9,6 +9,7 @@ import type {
   Deliverable,
   Demand,
   Doc,
+  Domain,
   Iface,
   L10n,
   Person,
@@ -22,6 +23,15 @@ import type {
 } from './types';
 
 // 團隊、文件、對帳、凍結期，以及「等我決定的事」。跟 selectors.ts 一樣，全部由狀態推導。
+
+/** 領域的名稱。同時是 3D 總行的樓層。 */
+export const DOMAIN_NAME: Record<Domain, L10n> = {
+  sales: L('業務', 'Sales'),
+  finance: L('財務', 'Finance'),
+  hr: L('人資', 'HR'),
+  procurement: L('採購', 'Procurement'),
+  it: L('資訊', 'IT'),
+};
 
 // ── 團隊
 

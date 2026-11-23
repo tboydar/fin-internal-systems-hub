@@ -1,13 +1,14 @@
 import { resend, toggleFault } from '../core/actions';
 import { can } from '../core/auth';
 import { fmtStamp } from '../core/date';
-import { L, T, tx } from '../core/i18n';
+import { DOMAIN_NAME } from '../core/derive';
+import { T, tx } from '../core/i18n';
 import { queued } from '../core/mutations';
 import { sayAbout } from '../core/narrative';
 import { href, type Route, setQuery } from '../core/router';
 import { type IfaceStatus, ifaceStatus, ifacesOf, impactOf, runsOf, systemHealth, touches, worse } from '../core/selectors';
 import { store } from '../core/store';
-import type { ApiEntry, AppState, Domain, Health, Iface, L10n, Run, Schedule, System, SystemId } from '../core/types';
+import type { ApiEntry, AppState, Domain, Health, Iface, Run, Schedule, System, SystemId } from '../core/types';
 import type { FlowEdgeSpec, FlowHandle, FlowNodeSpec, FlowSpec } from '../flow/FlowIsland';
 import { nextRun } from '../mock/runs';
 import { $, html, on, raw, type Safe, setHtml, toast } from '../ui/dom';
@@ -18,14 +19,6 @@ import { actionBtn, facts, healthLabel, mark, pageHead, personName, runStrip, sy
 
 // 整合架構：節點是系統，連線是介面。點連線看欄位對應、錯誤處理與對帳規則。
 // 圖與下面的清單讀同一份狀態；篩選條件與選取的對象都放在網址裡，重新整理後還在。
-
-export const DOMAIN_NAME: Record<Domain, L10n> = {
-  sales: L('業務', 'Sales'),
-  finance: L('財務', 'Finance'),
-  hr: L('人資', 'HR'),
-  procurement: L('採購', 'Procurement'),
-  it: L('資訊', 'IT'),
-};
 
 const POSITION: Record<SystemId, [x: number, y: number]> = {
   iam: [440, 0],
