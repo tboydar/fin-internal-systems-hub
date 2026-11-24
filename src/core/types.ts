@@ -16,6 +16,22 @@ export type SystemId = 'erp-gl' | 'erp-ap' | 'erp-po' | 'crm' | 'hr' | 'wf' | 'e
 export type VendorId = 'v-erp' | 'v-crm' | 'v-hr' | 'v-wf';
 export type Priority = 'P1' | 'P2' | 'P3';
 export type Risk = 'low' | 'med' | 'high';
+/** 機房：總行的自建機房、異地備援中心、廠商代管的機房。 */
+export type DcId = 'dc-hq' | 'dc-dr' | 'dc-vendor';
+export type RegionId = 'north' | 'central' | 'south' | 'overseas';
+/**
+ * 異地備援的做法。
+ * replica：資料即時複寫，備援環境一直開著；standby：定時複寫，要人工切換；
+ * backup：沒有備援環境，只有每天的備份，出事要從備份重建。
+ */
+export type DrMode = 'replica' | 'standby' | 'backup';
+export interface DrPlan {
+  mode: DrMode;
+  /** 復原時間目標：停擺之後多久要回來（小時）。 */
+  rtoHr: number;
+  /** 復原點目標：最多可以掉多久的資料（分鐘）。 */
+  rpoMin: number;
+}
 
 // ── 系統、廠商、人
 
@@ -32,6 +48,10 @@ export interface System {
   ownerId: string;
   version: string;
   hosting: L10n;
+  /** 正式環境放在哪一個機房。 */
+  dcId: DcId;
+  /** 異地備援的等級。廠商代管的系統，這裡寫的是合約上廠商承諾的等級。 */
+  dr: DrPlan;
   since: number;
   note: L10n;
 }
@@ -445,9 +465,38 @@ export interface Branch {
   id: string;
   name: L10n;
   region: L10n;
+  regionId: Exclude<RegionId, 'overseas'>;
+  /** 所在城市的經緯度（概略值，只用來在 3D 的全台模型上擺位置）。 */
+  lon: number;
+  lat: number;
   staff: number;
   /** 這個據點在簽呈系統裡等待核准的件數。 */
   pendingApprovals: number;
+}
+
+export interface DataCentre {
+  id: DcId;
+  name: L10n;
+  /** 這個機房扮演的環境：正式、備援、廠商代管。 */
+  role: L10n;
+  city: L10n;
+  lon: number;
+  lat: number;
+  note: L10n;
+}
+
+/** 海外據點。用的是總行的系統，但上班時間照當地的時鐘。 */
+export interface OverseasSite {
+  id: string;
+  name: L10n;
+  city: L10n;
+  /** IANA 時區名稱。跟台北差幾小時由瀏覽器的時區資料庫算，不寫死（日光節約會變）。 */
+  tz: string;
+  lon: number;
+  lat: number;
+  staff: number;
+  pendingApprovals: number;
+  since: number;
 }
 
 // ── 稽核
@@ -500,6 +549,8 @@ export interface AppState {
   docs: Doc[];
   roadmap: RoadmapItem[];
   branches: Branch[];
+  dataCentres: DataCentre[];
+  overseas: OverseasSite[];
   audit: AuditEntry[];
   rbac: Record<RoleId, string[]>;
   scenario: ScenarioState | null;

@@ -153,6 +153,11 @@ const WEEKDAYS: Record<'zh' | 'en', string[]> = {
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 };
 
+/** 星期幾的短名稱：一／Mon。0 是星期日。 */
+export function weekdayName(n: number): string {
+  return WEEKDAYS[getLang()][((n % 7) + 7) % 7];
+}
+
 /** 11/27（五）／Fri 11/27 */
 export function fmtDay(day: string): string {
   const [, m, d] = day.split('-').map(Number);

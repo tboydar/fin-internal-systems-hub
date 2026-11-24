@@ -1,5 +1,5 @@
 import { L } from '../core/i18n';
-import type { Branch, L10n, Person, RoleId, System, Vendor } from '../core/types';
+import type { Branch, DataCentre, L10n, OverseasSite, Person, RoleId, System, Vendor } from '../core/types';
 
 // 機構、系統、廠商與人。全部虛構；名稱改了要重新跑 bun run check:names。
 
@@ -21,6 +21,8 @@ export function buildSystems(): System[] {
       ownerId: 'e3',
       version: '11.4.2',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'standby', rtoHr: 4, rpoMin: 15 },
       since: 2016,
       note: L('傳票、科目餘額、月結與年結', 'Vouchers, account balances, month-end and year-end close'),
     },
@@ -35,6 +37,8 @@ export function buildSystems(): System[] {
       ownerId: 'e3',
       version: '11.4.2',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'standby', rtoHr: 4, rpoMin: 15 },
       since: 2016,
       note: L('應付憑單、付款申請、帳齡', 'Payable vouchers, payment requests, aging'),
     },
@@ -49,6 +53,8 @@ export function buildSystems(): System[] {
       ownerId: 'e3',
       version: '11.4.2',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'standby', rtoHr: 4, rpoMin: 15 },
       since: 2017,
       note: L('請購、採購單、驗收', 'Purchase requisitions, purchase orders, goods receipt'),
     },
@@ -63,6 +69,8 @@ export function buildSystems(): System[] {
       ownerId: 'e4',
       version: '6.2',
       hosting: L('廠商代管（專屬環境）', 'Vendor-hosted (dedicated)'),
+      dcId: 'dc-vendor',
+      dr: { mode: 'standby', rtoHr: 4, rpoMin: 30 },
       since: 2021,
       note: L('客戶主檔、往來紀錄、據點與業務人員歸屬', 'Customer master, interactions, branch and salesperson assignment'),
     },
@@ -77,6 +85,8 @@ export function buildSystems(): System[] {
       ownerId: 'e1',
       version: '8.0.5',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'standby', rtoHr: 8, rpoMin: 60 },
       since: 2018,
       note: L('員工主檔、到職與異動、計薪、加退保', 'Employee master, onboarding and transfers, payroll, insurance enrolment'),
     },
@@ -91,6 +101,8 @@ export function buildSystems(): System[] {
       ownerId: 'e4',
       version: '3.8',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'backup', rtoHr: 72, rpoMin: 1440 },
       since: 2011,
       note: L('簽呈、會簽、請購與付款核准。2027 年汰換', 'Approvals, countersigning, purchase and payment sign-off. To be replaced in 2027'),
     },
@@ -105,6 +117,8 @@ export function buildSystems(): System[] {
       ownerId: 'e1',
       version: '2.6',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'replica', rtoHr: 2, rpoMin: 5 },
       since: 2022,
       note: L('路由、轉換、重試、DLQ。內部團隊自己維護', 'Routing, transformation, retries, DLQ. Maintained in-house'),
     },
@@ -119,6 +133,8 @@ export function buildSystems(): System[] {
       ownerId: 'e2',
       version: '16',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'backup', rtoHr: 48, rpoMin: 1440 },
       since: 2020,
       note: L('管理報表、對帳規則、費用分攤', 'Management reports, reconciliation rules, cost allocation'),
     },
@@ -133,6 +149,8 @@ export function buildSystems(): System[] {
       ownerId: 'e4',
       version: '2022',
       hosting: L('自建機房', 'On-premises'),
+      dcId: 'dc-hq',
+      dr: { mode: 'replica', rtoHr: 0.5, rpoMin: 5 },
       since: 2014,
       note: L('帳號、群組、單一登入', 'Accounts, groups, single sign-on'),
     },
@@ -448,21 +466,106 @@ export const PERSONA: Record<RoleId, { personId?: string; name?: L10n; title?: L
 };
 
 export function buildBranches(): Branch[] {
-  const row = (id: string, zh: string, en: string, regionZh: string, regionEn: string, staff: number, pendingApprovals: number): Branch => ({
+  const REGION: Record<Branch['regionId'], L10n> = { north: L('北區', 'North'), central: L('中區', 'Central'), south: L('南區', 'South') };
+  // 經緯度是所在城市的概略位置，只用來在 3D 的全台模型上擺房子
+  const row = (
+    id: string,
+    zh: string,
+    en: string,
+    regionId: Branch['regionId'],
+    lon: number,
+    lat: number,
+    staff: number,
+    pendingApprovals: number,
+  ): Branch => ({
     id,
     name: L(zh, en),
-    region: L(regionZh, regionEn),
+    region: REGION[regionId],
+    regionId,
+    lon,
+    lat,
     staff,
     pendingApprovals,
   });
   return [
-    row('br-hq', '總公司營業部', 'Head Office Branch', '北區', 'North', 64, 7),
-    row('br-bq', '板橋分公司', 'Banqiao Branch', '北區', 'North', 31, 3),
-    row('br-ty', '桃園分公司', 'Taoyuan Branch', '北區', 'North', 28, 2),
-    row('br-hc', '新竹分公司', 'Hsinchu Branch', '北區', 'North', 22, 0),
-    row('br-tc', '台中分公司', 'Taichung Branch', '中區', 'Central', 36, 5),
-    row('br-cy', '嘉義分公司', 'Chiayi Branch', '南區', 'South', 17, 1),
-    row('br-tn', '台南分公司', 'Tainan Branch', '南區', 'South', 24, 4),
-    row('br-kh', '高雄分公司', 'Kaohsiung Branch', '南區', 'South', 33, 2),
+    row('br-hq', '總公司營業部', 'Head Office Branch', 'north', 121.56, 25.04, 64, 7),
+    row('br-bq', '板橋分公司', 'Banqiao Branch', 'north', 121.46, 25.01, 31, 3),
+    row('br-ty', '桃園分公司', 'Taoyuan Branch', 'north', 121.3, 24.99, 28, 2),
+    row('br-hc', '新竹分公司', 'Hsinchu Branch', 'north', 120.97, 24.8, 22, 0),
+    row('br-tc', '台中分公司', 'Taichung Branch', 'central', 120.68, 24.15, 36, 5),
+    row('br-cy', '嘉義分公司', 'Chiayi Branch', 'south', 120.45, 23.48, 17, 1),
+    row('br-tn', '台南分公司', 'Tainan Branch', 'south', 120.21, 22.99, 24, 4),
+    row('br-kh', '高雄分公司', 'Kaohsiung Branch', 'south', 120.31, 22.63, 33, 2),
+  ];
+}
+
+/** 三個機房。正式環境在總行，有備援的系統在台中各有一套待命的環境，CRM 放在廠商那邊。 */
+export function buildDataCentres(): DataCentre[] {
+  return [
+    {
+      id: 'dc-hq',
+      name: L('總行機房', 'Head office data centre'),
+      role: L('正式環境', 'Production'),
+      city: L('台北', 'Taipei'),
+      lon: 121.56,
+      lat: 25.04,
+      note: L('總行地下一樓。自建系統的正式環境都在這裡', 'Basement of the head office. Production for every self-hosted system'),
+    },
+    {
+      id: 'dc-dr',
+      name: L('異地備援中心', 'Disaster recovery centre'),
+      role: L('備援環境', 'Disaster recovery'),
+      city: L('台中', 'Taichung'),
+      lon: 120.62,
+      lat: 24.22,
+      note: L(
+        '有備援的系統在這裡各有一套待命的環境；只有備份的系統要在這裡重建',
+        'Standby environments for the systems that have one; backup-only systems are rebuilt here',
+      ),
+    },
+    {
+      id: 'dc-vendor',
+      name: L('廠商代管機房', 'Vendor-hosted data centre'),
+      role: L('廠商代管', 'Vendor-hosted'),
+      city: L('台南', 'Tainan'),
+      lon: 120.26,
+      lat: 23.06,
+      note: L('槿川科技的專屬環境，放 CRM。跟總行之間走專線', "Elmhaven Technologies' dedicated environment for CRM, linked to the head office by leased line"),
+    },
+  ];
+}
+
+/** 海外據點。全部虛構；城市是台灣的金融機構常見的海外設點地。 */
+export function buildOverseas(): OverseasSite[] {
+  const row = (
+    id: string,
+    zh: string,
+    en: string,
+    cityZh: string,
+    cityEn: string,
+    tz: string,
+    lon: number,
+    lat: number,
+    staff: number,
+    pendingApprovals: number,
+    since: number,
+  ): OverseasSite => ({
+    id,
+    name: L(zh, en),
+    city: L(cityZh, cityEn),
+    tz,
+    lon,
+    lat,
+    staff,
+    pendingApprovals,
+    since,
+  });
+  return [
+    row('os-tyo', '東京分行', 'Tokyo Branch', '東京', 'Tokyo', 'Asia/Tokyo', 139.76, 35.68, 18, 2, 2015),
+    row('os-hkg', '香港分行', 'Hong Kong Branch', '香港', 'Hong Kong', 'Asia/Hong_Kong', 114.17, 22.3, 26, 3, 2009),
+    row('os-sgn', '胡志明市辦事處', 'Ho Chi Minh City Office', '胡志明市', 'Ho Chi Minh City', 'Asia/Ho_Chi_Minh', 106.7, 10.78, 6, 0, 2019),
+    row('os-lon', '倫敦分行', 'London Branch', '倫敦', 'London', 'Europe/London', -0.09, 51.51, 12, 1, 2017),
+    row('os-nyc', '紐約分行', 'New York Branch', '紐約', 'New York', 'America/New_York', -74.01, 40.71, 21, 4, 2012),
+    row('os-lax', '洛杉磯分行', 'Los Angeles Branch', '洛杉磯', 'Los Angeles', 'America/Los_Angeles', -118.24, 34.05, 15, 2, 2014),
   ];
 }

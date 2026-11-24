@@ -6,7 +6,7 @@ import { buildDecisions, buildDemands } from './demands';
 import { buildApis, buildIfaces } from './ifaces';
 import { buildAdrs, buildDocs, buildRoadmap } from './knowledge';
 import { buildChanges, buildIncidents } from './ops';
-import { buildBranches, buildPeople, buildSystems, buildVendors } from './org';
+import { buildBranches, buildDataCentres, buildOverseas, buildPeople, buildSystems, buildVendors } from './org';
 import { buildReconDiffs, buildReconRules } from './recon';
 import { DEFAULT_SEED, forkRng } from './rng';
 import { buildRuns } from './runs';
@@ -14,7 +14,7 @@ import { buildChangeRequests, buildDeliverables, buildMilestones, buildRaci, bui
 import { buildReviews, buildTasks } from './work';
 
 /** 資料結構有不相容的變更時把這個數字加一，舊的 localStorage 就會自動重建。 */
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 /** 稽核軌跡一開始就有的幾筆：最近兩週真的會留下紀錄的動作。 */
 function buildAudit(): AuditEntry[] {
@@ -146,6 +146,8 @@ export function buildInitialState(seed: number = DEFAULT_SEED): AppState {
     docs: buildDocs(),
     roadmap: buildRoadmap(),
     branches: buildBranches(),
+    dataCentres: buildDataCentres(),
+    overseas: buildOverseas(),
     audit,
     rbac: structuredClone(DEFAULT_MATRIX),
     scenario: null,
