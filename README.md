@@ -94,6 +94,7 @@ bun run check:names                     # 查假名稱有沒有跟真實公司�
 - [0004 3D 與 2D 讀同一份狀態](docs/adr/0004-shared-state-2d-3d.md)
 - [0005 雙語文字就地寫成一對](docs/adr/0005-inline-bilingual-text.md)
 - [0006 3D 總行畫成剖面白模](docs/adr/0006-twin-rendering.md)
+- [0007 3D 做成三個比例尺，共用一條時間軸](docs/adr/0007-twin-scales.md)
 
 分支、commit 與改資料的規則在 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
@@ -110,7 +111,7 @@ bun run check:names                     # 查假名稱有沒有跟真實公司�
     ├── mock/                假資料，固定種子
     ├── ui/                  外殼、樣板與事件工具、圖示、共用元件、延遲載入
     ├── flow/                流程圖（xyflow 的 React 島）
-    ├── three/               3D 場景：model.ts 是模型，twin.ts 是光線、鏡頭、標籤與小紙片
+    ├── three/               3D 場景：twin.ts 是引擎（光線、鏡頭、標籤、小紙片），model.ts、island.ts、zones.ts 是三個比例尺的模型
     ├── pages/               十個頁面，每頁一個 chunk
     └── styles/main.css      設計代碼與樣式
 ```
@@ -137,7 +138,10 @@ curl -s https://tboydar.github.io/fin-internal-systems-hub/ | grep app-version
 - 權限矩陣存在瀏覽器裡，是用來說明「誰該看到什麼」，不是安全機制。
 - 3D 的時間軸拉到哪個小時沒有存下來，換頁再回來會回到「現在」。
 - 3D 的環境遮蔽在畫面更新太慢時會自己關掉（見 ADR 0006）。那個門檻是估的，沒有在低階的實體筆電上量過。
-- 手機寬度（390）上，機櫃標籤要錯開成四排，會蓋住一部分樓層。
+- 手機寬度（390）上，機櫃標籤要錯開成五排，會蓋住一部分樓層。
+- 3D 的「全台」是示意模型，不是地圖：海岸線只取了 29 個點，靠太近的據點會被推開。
+- 3D 的「海外」只算各地週一到週五 09:00–18:00，當地的假日沒有算進來。
+- 每一處據點的連線狀態都一樣，因為它們用的是同一批總行的系統；模型裡沒有個別據點的線路故障。
 - 各角色的說法只涵蓋寫了規則的情況；其餘用通用的句子。
 - 英文版是作者自己寫的，沒有請母語人士校對。
 - commit `ebfa687` 單獨拿出來型別檢查不會過（外殼檔少一行，下一個 commit 補上）。
@@ -145,4 +149,6 @@ curl -s https://tboydar.github.io/fin-internal-systems-hub/ | grep app-version
 ## 資料出處
 
 - 國定假日：行政院人事行政總處 115 年與 116 年「政府行政機關辦公日曆表」（data.gov.tw 資料集 14718，2026-11-23 查詢）。寫在 `src/core/date.ts`。
+- 海外據點的時差：瀏覽器內建的時區資料庫（IANA），由時區名稱算出來，不寫死。寫在 `src/core/sites.ts`。
+- 機房的位置、每個系統的備援做法與復原時間、海外據點、資訊處的支援時段，都是編的。
 - 其餘內容都是為這個 Demo 編的。名稱的查核範圍與限制寫在 `scripts/check-names.ts` 開頭。
