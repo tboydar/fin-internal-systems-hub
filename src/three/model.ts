@@ -1,56 +1,28 @@
 import {
   Box3,
   BoxGeometry,
-  type BufferGeometry,
-  Color,
   ConeGeometry,
   CylinderGeometry,
   Group,
   IcosahedronGeometry,
-  InstancedMesh,
-  type Material,
-  Matrix4,
   Mesh,
-  MeshBasicMaterial,
-  MeshStandardMaterial,
-  Quaternion,
+  type MeshBasicMaterial,
+  type MeshStandardMaterial,
   SphereGeometry,
   Vector3,
 } from 'three';
 import { FLOORS, RACKS } from '../core/twin';
 import type { Domain, Health, SystemId } from '../core/types';
+import { Batch, flat, hitBox, matte, PALETTE, type Paint, SLIP_OK, type SlipSpec, type Stage, solid, TONE } from './kit';
 
-// 微縮總行的「模型」：一棟沿著正面剖開的總行，放在一塊底板上。
-// 這個檔案只蓋不會動的東西（結構、家具、機房、據點），回傳之後會換顏色的那幾個零件。
-// 會動的小紙片、光線、鏡頭與標籤在 twin.ts。
+// 比例尺一「總行」：一棟沿著正面剖開的總行，放在一塊底板上。
+// 這個檔案蓋不會動的東西（結構、家具、機房、據點），並且知道狀態改變時要換哪幾個零件的顏色。
+// 光線、鏡頭、標籤與小紙片的移動在 twin.ts。
 //
 // 畫法照建築剖面模型的習慣：
 // - 被剖到的面（樓板、牆、土層的正面）填深色，一眼看得出哪裡是切面
 // - 其餘都是霧面的白，靠光影交代體積，不描邊
 // - 每層樓的家具不一樣，不看標籤也分得出是哪個單位
-
-type V3 = [number, number, number];
-
-export const PALETTE = {
-  white: 0xf5f4f1,
-  furniture: 0xe9eaea,
-  detail: 0xaeb7bf,
-  glass: 0xc9d3db,
-  ground: 0xe8e9e7,
-  road: 0xd8dcde,
-  earth: 0xdcdedd,
-  strata: 0xc3c8cb,
-  cut: 0x485663,
-  plinth: 0x35444f,
-  rack: 0xcdd3d8,
-  tray: 0xdcdfe2,
-  figure: 0x8996a3,
-  tree: 0xe6e8e4,
-  primary: 0x1d3a56,
-  affected: 0xecc9c4,
-} as const;
-
-export const TONE: Record<Health, number> = { ok: 0x25714b, warn: 0xb26f0c, crit: 0xa3271f };
 
 export const W = 9; // 建築的寬（x）
 export const D = 4; // 建築的深（z）
@@ -80,47 +52,7 @@ export const rackX = (id: SystemId) => RACK_SHIFT + (RACKS.indexOf(id) - (RACKS.
 export const floorY = (level: number) => B1 + level * FLOOR_H;
 const TOP = floorY(FLOORS.length);
 
-const UP = new Vector3(0, 1, 0);
-const matte = (color: number) => new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-const flat = (color: number) => new MeshBasicMaterial({ color });
-
-/** 同一種形狀的許多小零件合成一個 InstancedMesh，整批只算一次繪製。 */
-class Batch {
-  private items: { matrix: Matrix4; color: number }[] = [];
-  constructor(private geometry: BufferGeometry) {}
-
-  /** at 是零件「底部中心」的位置，擺家具時不必自己加半個高度。 */
-  add(size: V3, at: V3, color: number, turn = 0): void {
-    const position = new Vector3(at[0], at[1] + size[1] / 2, at[2]);
-    this.items.push({ matrix: new Matrix4().compose(position, new Quaternion().setFromAxisAngle(UP, turn), new Vector3(...size)), color });
-  }
-
-  build(parent: Group): void {
-    const mesh = new InstancedMesh(this.geometry, matte(0xffffff), this.items.length);
-    const tint = new Color();
-    this.items.forEach((item, i) => {
-      mesh.setMatrixAt(i, item.matrix);
-      mesh.setColorAt(i, tint.setHex(item.color));
-    });
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    parent.add(mesh);
-  }
-}
-
-/** 結構用的方塊。cut 有給的話，朝正面（+z）的那一面用切面的材質。 */
-function solid(group: Group, size: V3, center: V3, body: Material, cut?: Material): Mesh {
-  // BoxGeometry 六個面的順序是 +x、-x、+y、-y、+z、-z
-  const mesh = new Mesh(new BoxGeometry(...size), cut ? [body, body, body, body, cut, body] : body);
-  mesh.position.set(...center);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  group.add(mesh);
-  return mesh;
-}
-
-export interface TwinScene {
-  group: Group;
+interface TwinScene {
   /** 每層樓的樓板：受影響時樓板換成偏紅的霧面色，切面換成中斷的顏色。 */
   floors: Map<Domain, { slab: MeshStandardMaterial; cut: MeshBasicMaterial }>;
   racks: Map<SystemId, Mesh<BoxGeometry, MeshStandardMaterial>>;
@@ -130,16 +62,13 @@ export interface TwinScene {
   marks: Map<SystemId, Record<Health, Mesh>>;
   /** 所有據點小房子共用的材質，換顏色時一次換完。 */
   houses: MeshStandardMaterial;
-  /** 標籤要貼的位置。 */
-  anchors: Map<string, Vector3>;
-  /** 整個模型的範圍，陰影用它決定要算多大。 */
-  bounds: Box3;
-  /** 模型輪廓上的幾個點，鏡頭用它把模型剛好放進畫面。 */
-  outline: Vector3[];
 }
 
-export function buildModel(branchCount: number): TwinScene {
+/** branchIds 是營業據點的編號：有幾處就蓋幾間小房子，點下去知道是哪一處。 */
+export function buildHq(branchIds: string[]): Stage {
+  const branchCount = branchIds.length;
   const group = new Group();
+  const pickables: Mesh[] = [];
   const boxes = new Batch(new BoxGeometry(1, 1, 1));
   const tubes = new Batch(new CylinderGeometry(0.5, 0.5, 1, 20));
   const balls = new Batch(new SphereGeometry(0.5, 16, 12));
@@ -196,6 +125,8 @@ export function buildModel(branchCount: number): TwinScene {
     const slabCut = flat(PALETTE.cut);
     solid(group, [W - 2 * T, T, D - T], [0, floorY(i) + T / 2, T / 2], slab, slabCut);
     floors.set(floor.domain, { slab, cut: slabCut });
+    // 整層樓的空間都可以點
+    pickables.push(hitBox(group, [W - 2 * T, FLOOR_H - T, D - T], [0, floorY(i) + T + (FLOOR_H - T) / 2, T / 2], { kind: 'floor', id: floor.domain }));
   });
 
   // ── 屋頂：樓板、女兒牆、樓梯間與空調設備
@@ -321,9 +252,10 @@ export function buildModel(branchCount: number): TwinScene {
     rack.position.set(x, RACK_BASE + RACK_H / 2, RACK_Z);
     rack.castShadow = true;
     rack.receiveShadow = true;
-    rack.userData.systemId = id;
+    rack.userData.pick = { kind: 'system', id };
     group.add(rack);
     racks.set(id, rack);
+    pickables.push(rack);
     for (let k = 0; k < 5; k++) boxes.add([0.4, 0.035, 0.012], [x, RACK_BASE + 0.2 + k * 0.2, RACK_Z + 0.306], PALETTE.detail);
     boxes.add([0.03, B1 - 0.34 - RACK_TOP, 0.03], [x, RACK_TOP, RACK_Z - 0.18], PALETTE.furniture);
     boxes.add([0.2, 0.03, 0.5], [x, T, RACK_Z + 0.3 + 0.25], PALETTE.tray);
@@ -358,8 +290,9 @@ export function buildModel(branchCount: number): TwinScene {
     const z = row === 0 ? roadZ - 0.98 : roadZ + 0.92;
     // 大小略有不同，看起來才像一條街；變化量由順序決定，每次都一樣
     const height = 0.4 + ((n * 7) % 4) * 0.045;
-    const body = solid(group, [0.6, height, 0.56], [x, B1 + height / 2, z], houses);
-    body.name = `branch-${n}`;
+    solid(group, [0.6, height, 0.56], [x, B1 + height / 2, z], houses);
+    // 點小房子：換到「全台」那個比例尺，並且選好這一處
+    pickables.push(hitBox(group, [0.8, height + 0.4, 0.8], [x, B1 + (height + 0.4) / 2, z], { kind: 'site', id: branchIds[n] }));
     const top = new Mesh(new ConeGeometry(0.47, 0.3, 4), roof);
     top.position.set(x, B1 + height + 0.15, z);
     top.rotation.y = Math.PI / 4;
@@ -391,16 +324,59 @@ export function buildModel(branchCount: number): TwinScene {
   const anchors = new Map<string, Vector3>();
   for (const id of RACKS) anchors.set(`system:${id}`, new Vector3(rackX(id), RACK_TOP + 0.36, RACK_Z + 0.05));
   for (const [i, floor] of FLOORS.entries()) anchors.set(`floor:${floor.domain}`, new Vector3(-W / 2, floorY(i) + T, FRONT));
-  anchors.set('branches:all', new Vector3(W / 2 + 1.25 + ((perRow - 1) * 1.02) / 2, B1 + 1.2, roadZ - 0.98));
+  anchors.set('link:branches', new Vector3(W / 2 + 1.25 + ((perRow - 1) * 1.02) / 2, B1 + 1.2, roadZ - 0.98));
+
+  const built: TwinScene = { floors, racks, rings, marks, houses };
+  const roomLight = new Vector3(0, B1 - 0.4, 1.25);
+
+  function paint({ model, selected }: Paint): void {
+    const floorPicked = model.floors.find((f) => f.domain === selected.floor);
+    for (const sys of model.systems) {
+      const set = built.marks.get(sys.id);
+      const away = sys.place === 'dc-dr';
+      // 已經在備援中心接手的系統，總行這個機櫃是空的：不掛標記、顏色退掉
+      if (set) for (const health of ['ok', 'warn', 'crit'] as const) set[health].visible = !away && health === sys.health;
+      const down = model.down.includes(sys.id);
+      built.racks.get(sys.id)?.material.color.setHex(sys.id === selected.system ? PALETTE.primary : down ? TONE.crit : away ? PALETTE.away : PALETTE.rack);
+      const ring = built.rings.get(sys.id);
+      // 選了樓層時，這層樓每天在用的系統腳下也有一圈
+      if (ring) ring.visible = sys.id === selected.system || (floorPicked?.systems.includes(sys.id) ?? false);
+    }
+    // 受影響的樓層：樓板換成偏紅的霧面色，切面換成中斷的顏色。不是發光，只是換了材質的顏色
+    for (const floor of model.floors) {
+      const parts = built.floors.get(floor.domain);
+      const picked = floor.domain === selected.floor;
+      parts?.slab.color.setHex(floor.affected ? PALETTE.affected : picked ? PALETTE.picked : PALETTE.white);
+      parts?.cut.color.setHex(floor.affected ? TONE.crit : picked ? PALETTE.primary : PALETTE.cut);
+    }
+    built.houses.color.setHex(model.affected?.domains.includes('sales') ? PALETTE.affected : PALETTE.white);
+  }
+
+  function slips({ model, lowFx }: Paint): SlipSpec[] {
+    const active = model.flows.filter((f) => f.active);
+    return active.map((flow, n): SlipSpec => {
+      const stopped = flow.health === 'crit' || flow.stalled;
+      return {
+        path: slipRoute(flow.from, flow.to, flow.viaEsb, n),
+        // 流量越大，紙片越多、走得越快；中斷的介面紙片停在原地
+        count: lowFx ? 1 : flow.level,
+        speed: stopped ? 0 : 0.5 + flow.level * 0.35,
+        color: flow.stalled ? TONE.crit : flow.health === 'ok' ? SLIP_OK : TONE[flow.health],
+        tags: [`system:${flow.from}`, `system:${flow.to}`, `floor:${flow.domain}`, ...(flow.viaEsb ? ['system:esb'] : [])],
+      };
+    });
+  }
 
   return {
     group,
-    floors,
-    racks,
-    rings,
-    marks,
-    houses,
     anchors,
+    pickables,
+    view: { azimuth: 30, elevation: 21, azimuthRange: [-0.12, 0.95], polarRange: [0.9, 1.4], padTop: 10 },
+    slipScale: 1,
+    fixedLight: false,
+    roomLight,
+    paint,
+    slips,
     bounds: new Box3(new Vector3(LEFT - 0.35, -0.2, BACK - 0.35), new Vector3(RIGHT + 0.35, roofY + 0.62, FRONT + 0.35)),
     outline: [
       ...[-0.2, B1].flatMap((y) => [
@@ -424,7 +400,7 @@ export function buildModel(branchCount: number): TwinScene {
  * 一條介面的小紙片要走的路：從來源機櫃前面走到輸送帶，沿著輸送帶到目的機櫃，再走進去。
  * 經過整合層的介面會先繞進整合層的機櫃一趟。lane 決定走輸送帶上的哪一道。
  */
-export function slipRoute(from: SystemId, to: SystemId, viaEsb: boolean, lane: number): Vector3[] {
+function slipRoute(from: SystemId, to: SystemId, viaEsb: boolean, lane: number): Vector3[] {
   const z = BELT_Z0 + (lane % BELT_LANES) * BELT_LANE_GAP;
   const door = RACK_Z + 0.34;
   const at = (id: SystemId, depth: number) => new Vector3(rackX(id), BELT_Y, depth);

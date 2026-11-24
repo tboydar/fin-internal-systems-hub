@@ -311,7 +311,7 @@ test('微縮總行：九個機櫃的標籤各有引線、互不重疊；樓層�
   });
   await page.goto('#/overview');
   await expect(page.locator('#twin-stage canvas')).toBeVisible();
-  const labels = page.locator('#twin-labels button.twin-label');
+  const labels = page.locator('#twin-labels .twin-label.is-system');
   await expect(labels).toHaveCount(9);
   await expect(page.locator('#twin-labels .twin-stem')).toHaveCount(9);
   await expect(page.locator('#twin-labels .twin-label.is-floor[data-health]')).toHaveCount(5);
@@ -347,6 +347,115 @@ test('微縮總行：拖曳會轉動模型，按「重設視角」回到原位',
   await expect.poll(async () => Math.abs(((await label.boundingBox())?.x ?? 0) - before.x)).toBeLessThan(1);
 });
 
+test('微縮總行：點樓層只列那個單位的介面；方向鍵在機櫃標籤之間移動', async ({ page }) => {
+  await open(page, '/overview');
+  await expect(page.locator('#twin-stage canvas')).toBeVisible();
+  await page.click('#twin-labels [data-pick="floor:hr"]');
+  await expect(page).toHaveURL(/floor=hr/);
+  await expect(page.locator('#twin-floor-card')).toContainText('3F 人資');
+  await expect(page.locator('#twin-labels [data-pick="floor:hr"]')).toHaveAttribute('aria-pressed', 'true');
+  const rows = page.locator('#twin-flows tbody tr');
+  await expect(rows).toHaveCount(2);
+  await expect(page.locator('#twin-flows')).toContainText('INT-014');
+  await expect(page.locator('#twin-flows')).not.toContainText('INT-021');
+  // 再點一次是取消
+  await page.click('#twin-labels [data-pick="floor:hr"]');
+  await expect(page.locator('#twin-floor-card')).toHaveCount(0);
+  await page.locator('#twin-labels [data-system="hr"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#twin-labels [data-system="crm"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#twin-card')).toContainText('CRM');
+  await expect(page.locator('#twin-card')).toContainText('廠商代管機房');
+});
+
+test('三個比例尺：全台有三個機房與 8 處據點，海外有 6 處據點的時鐘；3D 沒有丟警告', async ({ page }) => {
+  const warnings: string[] = [];
+  page.on('console', (message) => {
+    if (['warning', 'error'].includes(message.type())) warnings.push(message.text());
+  });
+  await open(page, '/overview');
+  await expect(page.locator('#twin-stage canvas')).toBeVisible();
+  // 總行 → 全台
+  await page.click('#twin-views [data-view="tw"]');
+  await expect(page).toHaveURL(/view=tw/);
+  await expect(page.locator('#twin-labels .twin-label.is-site')).toHaveCount(11);
+  await expect(page.locator('#twin-labels .twin-label.is-region')).toHaveCount(3);
+  await expect(page.locator('#twin-sites tbody tr')).toHaveCount(11);
+  await expect(page.locator('#twin-dr tbody tr')).toHaveCount(9);
+  const pins = await page
+    .locator('#twin-labels .twin-label.is-site')
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })));
+  for (let a = 0; a < pins.length; a++) {
+    for (let b = a + 1; b < pins.length; b++) {
+      const apart = pins[a].right <= pins[b].left || pins[b].right <= pins[a].left || pins[a].bottom <= pins[b].top || pins[b].bottom <= pins[a].top;
+      expect(apart, `第 ${a + 1} 與第 ${b + 1} 個據點標籤疊在一起`).toBe(true);
+    }
+  }
+  // 點據點的標籤出資料卡；點區域只列那一區
+  await page.click('#twin-labels [data-pick="site:br-tc"]');
+  await expect(page.locator('#twin-site-card')).toContainText('台中分公司');
+  await expect(page.locator('#twin-site-card')).toContainText('中區');
+  await page.click('#twin-labels [data-pick="region:south"]');
+  await expect(page.locator('#twin-region-card')).toContainText('南區');
+  await expect(page.locator('#twin-sites tbody tr')).toHaveCount(3);
+  await page.click('#twin-sites [data-site="br-kh"]');
+  await expect(page.locator('#twin-site-card')).toContainText('高雄分公司');
+  // 全台 → 海外
+  await page.click('#twin-views [data-view="world"]');
+  await expect(page.locator('#twin-labels .twin-label.is-site')).toHaveCount(7);
+  await expect(page.locator('#twin-clocks tbody tr')).toHaveCount(7);
+  await expect(page.locator('#twin-day-table tbody tr')).toHaveCount(7);
+  await expect(page.locator('#twin-day-sum')).toContainText('26 小時');
+  await expect(page.locator('#twin-world-now')).toContainText('海外 3 處上班中');
+  // 回到總行
+  await page.click('#twin-views [data-view="hq"]');
+  await expect(page.locator('#twin-labels .twin-label.is-system')).toHaveCount(9);
+  await expect(page.locator('#twin-day')).toBeEmpty();
+  expect(warnings).toEqual([]);
+});
+
+test('海外：重播到 23 點，紐約在上班、撞到夜間批次，台北只剩值班', async ({ page }) => {
+  await open(page, '/overview?view=world&site=os-nyc');
+  await expect(page.locator('#twin-site-card')).toContainText('紐約分行');
+  await expect(page.locator('#twin-site-card')).toContainText('休息');
+  await page.locator('#twin-hour').fill('23');
+  await expect(page.locator('#twin-site-card')).toContainText('上班中');
+  await expect(page.locator('#twin-site-card')).toContainText('週一 10:00');
+  await expect(page.locator('#twin-site-card')).toContainText('比台北慢 13 小時');
+  await expect(page.locator('#twin-site-card')).toContainText('INT-061');
+  await expect(page.locator('#twin-site-card')).toContainText('只有值班');
+  await expect(page.locator('#twin-world-now')).toContainText('台北只有值班');
+  await expect(page.locator('#twin-labels [data-pick="site:os-nyc"]')).toContainText('紐約 週一 10:00');
+});
+
+test('演練總行機房停擺：時間往後，回來的系統變多；簽呈最慢，它回來之前每層樓都受影響；結束後恢復原狀', async ({ page }) => {
+  await open(page, '/overview');
+  await page.click('#twin-drill-toggle');
+  await expect(page.locator('#twin-drill')).toContainText('8 個還沒回來');
+  await expect(page.locator('#twin-drill')).toContainText('CRM 放在廠商機房');
+  await expect(page.locator('#twin-impact')).toContainText('5F 資訊');
+  await page.click('#twin-drill-steps [data-drill="3"]');
+  await expect(page.locator('#twin-drill')).toContainText('停擺後 4 小時');
+  await expect(page.locator('#twin-drill')).toContainText('5 個系統已在備援中心接手');
+  await expect(page.locator('#twin-drill')).toContainText('全部回來要 3 天');
+  await expect(page.locator('#twin-impact')).toContainText('1F 業務');
+  // 同一個演練，換到全台看：據點改連備援中心，備援等級的表多一欄演練
+  await page.click('#twin-views [data-view="tw"]');
+  await expect(page.locator('#twin-drill')).toContainText('停擺後 4 小時');
+  await expect(page.locator('#twin-dr')).toContainText('還沒回來');
+  await expect(page.locator('#twin-dr')).toContainText('已接手');
+  await expect(page.locator('#twin-labels [data-pick="site:dc-dr"]')).toContainText('接手 5');
+  await page.click('#twin-drill-steps [data-drill="6"]');
+  await expect(page.locator('#twin-drill')).toContainText('都在備援中心接手了');
+  await expect(page.locator('#twin-impact')).toHaveCount(0);
+  await page.click('#twin-drill-toggle');
+  await expect(page.locator('#twin-drill')).toHaveCount(0);
+  // 演練沒有改資料：總覽上的數字跟一開始一樣
+  await page.click('#twin-views [data-view="hq"]');
+  await expect(page.locator('#twin-impact')).toHaveCount(0);
+});
+
 test('時間軸重播月結日：拉到 23 點，清單換成夜間批次', async ({ page }) => {
   await open(page, '/overview');
   await expect(page.locator('#twin-flows')).toContainText('INT-014');
@@ -378,6 +487,13 @@ test.describe('關閉 WebGL', () => {
     await expect(page.locator('#twin-card')).toContainText('人事薪資');
     await page.click('[data-act="twin-fault"]');
     await expect(page.locator('#twin-fallback')).toContainText('受影響');
+    // 另外兩個比例尺也有清單可以看
+    await page.click('#twin-views [data-view="tw"]');
+    await expect(page.locator('#twin-fallback-sites tbody tr')).toHaveCount(11);
+    await page.click('#twin-views [data-view="world"]');
+    await expect(page.locator('#twin-fallback-clocks tbody tr')).toHaveCount(7);
+    await page.click('#twin-fallback [data-site="os-lon"]');
+    await expect(page.locator('#twin-site-card')).toContainText('倫敦分行');
     for (const path of ALL_PAGES) {
       await open(page, path);
       await expect(page.locator('#view .notice')).toHaveCount(0);

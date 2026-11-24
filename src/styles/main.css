@@ -985,6 +985,19 @@ pre.code {
   white-space: nowrap;
   color: var(--ink-2);
 }
+.twin-label[hidden],
+.twin-stem[hidden] {
+  display: none;
+}
+/* 可以點的標籤是按鈕：先把按鈕的預設外觀拿掉，再照種類畫 */
+button.twin-label {
+  pointer-events: auto;
+  cursor: pointer;
+  margin: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+}
 /* 樓層標籤照剖面圖標高的畫法：字壓在一條接到樓板的細線上，前面的形狀是這個單位的介面狀態 */
 .twin-label.is-floor {
   transform: translate(-100%, -100%);
@@ -1014,47 +1027,106 @@ pre.code {
   background: var(--crit);
   border-radius: 0;
 }
+.twin-label.is-floor.is-hover {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+.twin-label.is-floor.is-selected {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+  font-weight: 600;
+}
 .twin-label.is-floor.is-affected {
   color: var(--crit);
   border-bottom-color: var(--crit);
   font-weight: 600;
 }
-.twin-label.is-branches {
-  padding: 0 5px;
+/* 區域與「營業據點」：一塊小牌子 */
+.twin-label.is-link,
+.twin-label.is-region {
+  padding: 0 6px;
+  border: 1px solid var(--ink-3);
   border-radius: var(--r);
-  background: rgb(255 255 255 / 0.72);
+  background: rgb(255 255 255 / 0.84);
   color: var(--ink);
 }
-button.twin-label {
+.twin-label.is-region.is-affected {
+  border-color: var(--crit);
+  color: var(--crit);
+}
+.twin-label.is-link.is-hover,
+.twin-label.is-region.is-hover {
+  border-color: var(--primary);
+  background: var(--primary-tint);
+}
+.twin-label.is-region.is-selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+/* 機櫃與據點：標籤在上面，一條引線接下來 */
+.twin-label.is-system,
+.twin-label.is-site {
   transform: translate(-50%, -100%);
-  pointer-events: auto;
-  cursor: pointer;
   border: 1px solid var(--ink-3);
   border-radius: var(--r);
   background: var(--panel);
   padding: 0 3px;
-  font-family: var(--font-num);
   font-size: 11px;
   color: var(--ink);
 }
-button.twin-label[data-health="warn"] {
+/* 擠在一起的時候，標籤改成掛在引線的右邊或左邊 */
+.twin-label.is-flag-r {
+  transform: translate(0, -100%);
+}
+.twin-label.is-flag-l {
+  transform: translate(-100%, -100%);
+}
+.twin-label.is-system {
+  font-family: var(--font-num);
+}
+.twin-label.is-system.is-quiet,
+.twin-label.is-site.is-quiet {
+  color: var(--ink-3);
+  border-style: dashed;
+}
+.twin-label.is-system[data-health="warn"],
+.twin-label.is-site[data-health="warn"] {
   border-color: var(--warn);
   color: var(--warn);
 }
-button.twin-label[data-health="crit"] {
+.twin-label.is-system[data-health="crit"],
+.twin-label.is-site[data-health="crit"] {
   border-color: var(--crit);
   color: var(--crit);
 }
-button.twin-label.is-hover {
+.twin-label.is-system.is-hover,
+.twin-label.is-site.is-hover {
   border-color: var(--primary);
   background: var(--primary-tint);
   z-index: 2;
 }
-button.twin-label.is-selected {
+.twin-label.is-system.is-selected,
+.twin-label.is-site.is-selected {
   background: var(--primary);
   border-color: var(--primary);
+  border-style: solid;
   color: #fff;
   z-index: 3;
+}
+/* 時區桌前緣的刻度：當地幾點。不在上班時段的淡一點 */
+.twin-label.is-tick {
+  transform: translate(-50%, 2px);
+  font-family: var(--font-num);
+  font-size: 10.5px;
+  color: var(--ink);
+}
+.twin-label.is-tick.is-quiet {
+  color: var(--ink-3);
+}
+.twin-label.is-note {
+  transform: translate(-50%, -100%);
+  font-size: 11px;
 }
 .twin-stem {
   position: absolute;
@@ -1129,6 +1201,105 @@ button.twin-label.is-selected {
 .twin-profile rect.is-now {
   fill: var(--primary);
 }
+/* 月結日這個營業日在各地的時段（只在「海外」顯示） */
+.twin-day {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.twin-day:empty {
+  display: none;
+}
+.twin-day h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.twin-day .table-wrap {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+}
+.twin-day-chart {
+  overflow-x: auto;
+}
+.twin-day-chart svg {
+  display: block;
+  /* 寬螢幕縮到欄寬；窄螢幕不再縮，改成左右捲動，字才看得見 */
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+  font-size: 11.5px;
+}
+.twin-day-chart .is-support {
+  fill: #e4ecf1;
+}
+.twin-day-chart .is-grid {
+  stroke: var(--line-2);
+}
+.twin-day-chart .is-axis {
+  fill: var(--ink-3);
+  font-family: var(--font-num);
+  font-size: 10.5px;
+}
+.twin-day-chart .is-name {
+  fill: var(--ink);
+}
+.twin-day-chart .is-open {
+  fill: #5d7186;
+}
+.twin-day-chart .is-batch {
+  stroke: #b3bcc4;
+  stroke-dasharray: 2 2;
+}
+.twin-day-chart .is-batch.is-touch {
+  stroke: var(--warn);
+  stroke-dasharray: none;
+  opacity: 0.6;
+}
+.twin-day-chart .is-hit {
+  fill: var(--warn);
+  stroke: #fff;
+}
+.twin-day-chart .is-now {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+.twin-day-key i {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  margin: 0 4px 0 10px;
+}
+.twin-day-key i:first-child {
+  margin-left: 0;
+}
+.twin-day-key .is-open {
+  background: #5d7186;
+}
+.twin-day-key .is-support {
+  background: #e4ecf1;
+  border: 1px solid var(--line-2);
+}
+.twin-day-key .is-batch {
+  width: 0;
+  height: 10px;
+  border-left: 1px solid var(--warn);
+}
+.twin-day-key .is-hit {
+  width: 9px;
+  background: var(--warn);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.twin-now {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+#twin-drill-steps {
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
 .twin-side {
   padding: 10px 12px;
   display: flex;
@@ -1137,6 +1308,10 @@ button.twin-label.is-selected {
   max-height: 560px;
   overflow-y: auto;
   min-width: 0;
+}
+/* 右欄內容比欄位高的時候整欄捲動，裡面的表格不要被壓扁 */
+.twin-side > * {
+  flex: none;
 }
 .twin-side h3,
 .twin-card h3 {
@@ -1551,9 +1726,9 @@ legend {
   .twin-stage {
     height: 300px;
   }
-  button.twin-label {
+  .twin-label.is-system,
+  .twin-label.is-site {
     font-size: 10px;
-    padding: 0 3px;
   }
   .twin-side {
     max-height: none;
