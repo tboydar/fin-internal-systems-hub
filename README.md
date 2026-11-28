@@ -51,10 +51,10 @@
 
 ## 怎麼跑
 
-需要 [bun](https://bun.sh)。
+需要 [bun](https://bun.sh) 1.4.0 或以上（`bun.lock` 是 lockfileVersion 2）。
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run dev        # 開發伺服器，http://localhost:5173
 bun run build      # 型別檢查 ＋ 正式建置，輸出到 dist/
 bun run preview    # 預覽建置結果
@@ -73,6 +73,24 @@ bun run check:names                     # 查假名稱有沒有跟真實公司�
 - **冒煙測試**（`tests/e2e/`，Playwright）：八個角色登入後每一頁都開得起來、三個劇本從頭走到尾、數字點進去列數相同、重新整理不會 404、英文介面沒有殘留中文、瀏覽器只向網站本身拿靜態檔案、關掉 WebGL 其他功能照常。
 - 本機的冒煙測試直接用已安裝的 Chrome。沒有的話先 `bunx playwright install chromium`，再用 `CI=1 bun run test:e2e`。
 - 截圖：`bun run build && bun run preview --port 4173`，另開一個終端機跑 `bun scripts/screenshots.ts`，輸出到 `docs/screenshots/`（1280 寬）。
+
+## 環境變數
+
+這個 Demo 不需要 `.env`，也沒有任何必填的設定。只有這幾個選用變數：
+
+| 變數              | 時機     | 說明                                                       |
+| ----------------- | -------- | ---------------------------------------------------------- |
+| `VITE_BASE`       | 建置     | 覆寫 Vite 的 `base`；預設是相對路徑 `./`                   |
+| `APP_VERSION`     | 建置     | 直接使用指定的版號；用來在本機重現某一版的建置結果         |
+| `APP_COMMIT`      | 建置     | 覆寫寫進 `<meta name="app-commit">` 的 commit 短碼         |
+| `E2E_BASE_URL`    | 冒煙測試 | 對已部署的網站跑同一套測試，不啟動本機的 preview 伺服器    |
+| `E2E_SOFTWARE_GL` | 冒煙測試 | 設 `1` 時用軟體算圖跑 WebGL，在本機模擬 CI 沒有 GPU 的環境 |
+
+例如對線上版跑冒煙測試：
+
+```bash
+E2E_BASE_URL=https://tboydar.github.io/fin-internal-systems-hub/ bun run test:e2e
+```
 
 ## 怎麼加一條介面
 
@@ -145,6 +163,20 @@ curl -s https://tboydar.github.io/fin-internal-systems-hub/ | grep app-version
 - 各角色的說法只涵蓋寫了規則的情況；其餘用通用的句子。
 - 英文版是作者自己寫的，沒有請母語人士校對。
 - commit `ebfa687` 單獨拿出來型別檢查不會過（外殼檔少一行，下一個 commit 補上）。
+
+## 常見問題
+
+**`bun install --frozen-lockfile` 出現 `Unknown lockfile version`？**
+是本機的 Bun 太舊。這個 repo 的 `bun.lock` 是 lockfileVersion 2，需要 Bun 1.4.0 或以上。
+
+**為什麼重新整理之後，剛才的操作還在？**
+操作紀錄存在瀏覽器的 `localStorage`（鍵值以 `fish:` 開頭），不會送出去。要回到初始資料，按最上面的「還原 Demo 資料」。
+
+**電腦沒有 WebGL 看得到嗎？**
+可以。3D 場景會換成同一份資料的表格，其他頁面與劇本不受影響。
+
+**本機沒有 Chrome，怎麼跑冒煙測試？**
+先 `bunx playwright install chromium`，再用 `CI=1 bun run test:e2e`。
 
 ## 資料出處
 

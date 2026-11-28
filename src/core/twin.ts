@@ -86,7 +86,8 @@ export function twinModel(state: AppState, hour: number | null = null, probe: Sy
   const drill = drillStep === null ? null : drillAt(state, drillStep);
   const down = [...new Set([...state.faults, ...(probe ? [probe] : []), ...(drill?.down ?? [])])];
   const flows: TwinFlow[] = state.ifaces.map((iface) => {
-    // 每月一次的批次只在月結日跑；看「現在」的時候，除非今天剛好有排，否則不算
+    // 每月一次的批次只在月結日重播時算。INT-015 是例外：Demo 的今天正是薪資分錄拋轉日，
+    // 所以看「現在」也算；其他每月一次的批次（例如月結夜間的費用分攤）今天還不到跑的時間。
     const monthlyOff = iface.schedule.kind === 'monthly' && !replay && iface.id !== 'INT-015';
     const records = monthlyOff ? 0 : recordsAt(iface, at);
     return {
